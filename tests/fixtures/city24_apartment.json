@@ -1,0 +1,13 @@
+{
+  "id":"2469393","friendly_id":"2928399","price":"800.00","room_count":3,
+  "property_size":77.6,"lot_size":null,"lot_size_unit_id":null,
+  "transaction_type":"/transaction_types/2","unit_type":"Apartment",
+  "address":{"house_number":"5","export_house_number":true,
+    "street":{"id":267016,"name":"Stendes iela","parent":245396},"county":null,"parish":null,
+    "city":{"id":245396,"name":"Rīga","parent":null},"village":null,
+    "district":{"id":270705,"name":"Pleskodāle-Šampēteris","parent":245396}},
+  "attributes":{"FLOOR":5,"TOTAL_FLOORS":5,"HOUSE_TYPE":["new_project"],"BUILDING_MATERIAL":["brick"]},
+  "main_image":{"url":"https://static.img-city24.lv/object/{fmt:em}/3244/main.jpg"},
+  "date_created":"1786449891","descriptions":{"lv_LV":{"introduction":"Mājīgs <b>3 istabu</b> dzīvoklis Šampēterī.<br>Pieejams tagad."}},
+  "images":[{"url":"https://static.img-city24.lv/object/{fmt:em}/3244/main.jpg"},{"url":"https://static.img-city24.lv/object/{fmt:em}/3244/second.jpg"}]
+}

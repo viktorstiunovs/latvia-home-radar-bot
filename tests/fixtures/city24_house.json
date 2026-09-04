@@ -1,0 +1,13 @@
+{
+  "id":"2470415","friendly_id":"3643793","price":"395000.00","room_count":4,
+  "property_size":160.0,"lot_size":3.6,"lot_size_unit_id":5,
+  "transaction_type":"/transaction_types/1","unit_type":"House",
+  "address":{"house_number":"2","export_house_number":true,
+    "street":{"id":259036,"name":"Kraujas iela","parent":245396},"county":null,"parish":null,
+    "city":{"id":245396,"name":"Rīga","parent":null},"village":null,
+    "district":{"id":270722,"name":"Berģi","parent":245396}},
+  "attributes":{"TOTAL_FLOORS":2,"BUILDING_MATERIAL":["stone_house"]},
+  "main_image":{"url":"https://static.img-city24.lv/object/{fmt:em}/5444/house.jpg"},
+  "date_created":"1786449891","descriptions":{"lv_LV":{"introduction":"Ģimenes māja Berģos"}},
+  "images":[{"url":"https://static.img-city24.lv/object/{fmt:em}/5444/house.jpg"}]
+}
