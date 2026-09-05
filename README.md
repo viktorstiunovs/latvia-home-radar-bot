@@ -23,7 +23,37 @@ docker compose up -d db rabbitmq
 go run ./cmd/bot
 ```
 
-Set `TELEGRAM_BOT_TOKEN` to a token from BotFather and `SCRAPER_CONTACT` to an email address or URL identifying the operator. The HTTP user agent includes this contact value.
+Set `TELEGRAM_BOT_TOKEN` to a token from BotFather and `SCRAPER_CONTACT` to an email address or URL identifying the operator. The HTTP user agent includes this contact value. Replace both example infrastructure passwords before deploying the complete stack. Use URL-safe passwords because Compose also uses them in the application connection URLs; a command such as `openssl rand -hex 32` generates a suitable value.
+
+`POSTGRES_DATA_SOURCE` accepts either a Docker named volume such as
+`postgres_data` or an absolute host directory. For example, the production
+server can keep PostgreSQL outside the project checkout with:
+
+```dotenv
+POSTGRES_DATA_SOURCE=/home/clive00lewis/db/postgres
+```
+
+The host directory must exist and remain owned by the PostgreSQL user in the
+container. For `postgres:17-alpine`, an existing data directory normally shows
+numeric owner and group `70:70`; do not change it to the host login user.
+
+`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `RABBITMQ_USER`, and
+`RABBITMQ_PASSWORD` configure the infrastructure containers. The complete
+Compose stack constructs its internal application URLs using the `db` and
+`rabbitmq` service names. `DATABASE_URL` and `RABBITMQ_URL` in `.env` use
+`localhost` for the documented workflow where the Go application runs directly
+on the host.
+
+PostgreSQL and RabbitMQ only apply their initialization credentials when their
+data directories are first created. When adopting existing data, initially set
+the variables to the credentials already stored by each service. Changing the
+variables alone does not rotate credentials in an existing database or broker.
+
+Validate the environment without printing its rendered secrets:
+
+```bash
+docker compose config --quiet
+```
 
 Run unit tests:
 

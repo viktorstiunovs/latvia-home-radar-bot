@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Made the PostgreSQL data location and PostgreSQL/RabbitMQ credentials
+  configurable through the Compose environment.
+
 ## [0.2.0] - 2026-09-05
 
 ### Added
