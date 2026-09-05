@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Added an administrator-only `/broadcast` command for messaging all registered
+  users with isolated delivery failures and a completion summary.
+
 ### Changed
 
 - Made the PostgreSQL data location and PostgreSQL/RabbitMQ credentials

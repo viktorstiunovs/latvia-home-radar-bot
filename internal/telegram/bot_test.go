@@ -2,9 +2,11 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +19,8 @@ import (
 type fakeAlertStore struct {
 	user             domain.User
 	detectedLanguage string
+	recipientChatIDs []int64
+	listUserCalls    int
 }
 
 func (s *fakeAlertStore) UpsertUser(_ context.Context, _, _ int64, _, languageTag string) (domain.User, error) {
@@ -30,6 +34,11 @@ func (s *fakeAlertStore) UpsertUser(_ context.Context, _, _ int64, _, languageTa
 func (s *fakeAlertStore) SetUserLanguage(_ context.Context, _ int64, languageTag string) (bool, error) {
 	s.user.LanguageTag = languageTag
 	return true, nil
+}
+
+func (s *fakeAlertStore) ListUserChatIDs(context.Context) ([]int64, error) {
+	s.listUserCalls++
+	return append([]int64(nil), s.recipientChatIDs...), nil
 }
 
 func (s *fakeAlertStore) ListChildAreas(context.Context, string) ([]domain.AreaChoice, error) {
@@ -57,8 +66,10 @@ func (s *fakeAlertStore) DeleteFilter(context.Context, int64, int64) (bool, erro
 }
 
 type recordingTransport struct {
-	mu     sync.Mutex
-	bodies []string
+	mu             sync.Mutex
+	bodies         []string
+	failedChatIDs  map[int64]bool
+	attemptedChats []int64
 }
 
 func (t *recordingTransport) RoundTrip(request *http.Request) (*http.Response, error) {
@@ -68,11 +79,24 @@ func (t *recordingTransport) RoundTrip(request *http.Request) (*http.Response, e
 	}
 	t.mu.Lock()
 	t.bodies = append(t.bodies, string(body))
+	var payload struct {
+		ChatID int64 `json:"chat_id"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.mu.Unlock()
+		return nil, err
+	}
+	t.attemptedChats = append(t.attemptedChats, payload.ChatID)
+	failed := t.failedChatIDs[payload.ChatID]
 	t.mu.Unlock()
+	responseBody := `{"ok":true,"result":{"message_id":99}}`
+	if failed {
+		responseBody = `{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":99}}`)),
+		Body:       io.NopCloser(strings.NewReader(responseBody)),
 		Request:    request,
 	}, nil
 }
@@ -87,6 +111,28 @@ func (t *recordingTransport) reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.bodies = nil
+	t.attemptedChats = nil
+}
+
+func (t *recordingTransport) attemptedChatIDs() []int64 {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]int64(nil), t.attemptedChats...)
+}
+
+func (t *recordingTransport) texts() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	result := make([]string, 0, len(t.bodies))
+	for _, body := range t.bodies {
+		var payload struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal([]byte(body), &payload) == nil {
+			result = append(result, payload.Text)
+		}
+	}
+	return result
 }
 
 func TestStartInfersSupportedTelegramLanguage(t *testing.T) {
@@ -134,6 +180,74 @@ func TestLanguageCallbackPersistsChoiceAndUsesItImmediately(t *testing.T) {
 	})
 	if body := transport.joinedBodies(); !strings.Contains(body, "Īpašumu paziņojumi Latvijā") {
 		t.Fatalf("persisted language was not used after restart: %s", body)
+	}
+}
+
+func TestBroadcastIgnoresUnauthorizedUser(t *testing.T) {
+	bot, store, transport := newTestBot(t)
+	bot.adminUserID = 7
+	store.recipientChatIDs = []int64{100, 200}
+
+	bot.handleMessage(context.Background(), &models.Message{
+		From: &models.User{ID: 42, FirstName: "Tester", LanguageCode: "en"},
+		Chat: models.Chat{ID: 42},
+		Text: "/broadcast hello",
+	})
+
+	if store.listUserCalls != 0 {
+		t.Fatalf("recipient list calls = %d", store.listUserCalls)
+	}
+	if attempts := transport.attemptedChatIDs(); len(attempts) != 0 {
+		t.Fatalf("unexpected Telegram attempts: %v", attempts)
+	}
+}
+
+func TestBroadcastRequiresMessage(t *testing.T) {
+	bot, store, transport := newTestBot(t)
+	bot.adminUserID = 42
+
+	bot.handleMessage(context.Background(), &models.Message{
+		From: &models.User{ID: 42, FirstName: "Admin", LanguageCode: "en"},
+		Chat: models.Chat{ID: 42},
+		Text: "/broadcast",
+	})
+
+	if store.listUserCalls != 0 {
+		t.Fatalf("recipient list calls = %d", store.listUserCalls)
+	}
+	if texts := transport.texts(); !reflect.DeepEqual(texts, []string{"Usage: /broadcast <message>"}) {
+		t.Fatalf("Telegram texts = %v", texts)
+	}
+}
+
+func TestBroadcastLoadsAllRecipientsAndContinuesAfterFailure(t *testing.T) {
+	bot, store, transport := newTestBot(t)
+	bot.adminUserID = 42
+	store.recipientChatIDs = []int64{100, 200, 300}
+	transport.failedChatIDs = map[int64]bool{200: true}
+
+	bot.handleMessage(context.Background(), &models.Message{
+		From: &models.User{ID: 42, FirstName: "Admin", LanguageCode: "en"},
+		Chat: models.Chat{ID: 42},
+		Text: "/broadcast Maintenance & <update>",
+	})
+
+	if store.listUserCalls != 1 {
+		t.Fatalf("recipient list calls = %d", store.listUserCalls)
+	}
+	if attempts := transport.attemptedChatIDs(); !reflect.DeepEqual(attempts, []int64{100, 200, 300, 42}) {
+		t.Fatalf("Telegram attempts = %v", attempts)
+	}
+	if bodies := transport.joinedBodies(); strings.Contains(bodies, `"parse_mode"`) {
+		t.Fatalf("broadcast messages unexpectedly enable Telegram parsing: %s", bodies)
+	}
+	if texts := transport.texts(); !reflect.DeepEqual(texts, []string{
+		"Maintenance & <update>",
+		"Maintenance & <update>",
+		"Maintenance & <update>",
+		"Broadcast complete: 2 successful, 1 failed.",
+	}) {
+		t.Fatalf("Telegram texts = %v", texts)
 	}
 }
 

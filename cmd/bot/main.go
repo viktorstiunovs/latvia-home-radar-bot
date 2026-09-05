@@ -76,7 +76,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	if err := catalog.Validate(); err != nil {
 		return err
 	}
-	tgBot, err := telegram.NewBot(cfg.TelegramBotToken, api, store, catalog, logger)
+	tgBot, err := telegram.NewBot(cfg.TelegramBotToken, cfg.TelegramAdminUserID, api, store, catalog, logger)
 	if err != nil {
 		return err
 	}

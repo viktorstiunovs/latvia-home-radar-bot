@@ -94,6 +94,15 @@ func button(text, data string) inlineButton {
 
 func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, markup *keyboard) (int, error) {
 	payload := map[string]any{"chat_id": chatID, "text": text, "parse_mode": "HTML", "link_preview_options": map[string]bool{"is_disabled": true}}
+	return c.sendMessage(ctx, payload, markup)
+}
+
+func (c *Client) SendPlainMessage(ctx context.Context, chatID int64, text string) (int, error) {
+	payload := map[string]any{"chat_id": chatID, "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}
+	return c.sendMessage(ctx, payload, nil)
+}
+
+func (c *Client) sendMessage(ctx context.Context, payload map[string]any, markup *keyboard) (int, error) {
 	if markup != nil {
 		payload["reply_markup"] = markup
 	}

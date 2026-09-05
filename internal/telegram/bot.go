@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
 	"github.com/clive00lewis/latvia-home-radar/internal/localization"
@@ -15,6 +16,7 @@ import (
 
 type AlertStore interface {
 	UpsertUser(context.Context, int64, int64, string, string) (domain.User, error)
+	ListUserChatIDs(context.Context) ([]int64, error)
 	SetUserLanguage(context.Context, int64, string) (bool, error)
 	ListChildAreas(context.Context, string) ([]domain.AreaChoice, error)
 	ListRootAreas(context.Context) ([]domain.AreaChoice, error)
@@ -25,17 +27,18 @@ type AlertStore interface {
 }
 
 type Bot struct {
-	poller  *tgbot.Bot
-	api     *Client
-	store   AlertStore
-	catalog *localization.Catalog
-	logger  *slog.Logger
-	mu      sync.Mutex
-	states  map[int64]*wizardState
+	poller      *tgbot.Bot
+	api         *Client
+	store       AlertStore
+	catalog     *localization.Catalog
+	logger      *slog.Logger
+	adminUserID int64
+	mu          sync.Mutex
+	states      map[int64]*wizardState
 }
 
-func NewBot(token string, api *Client, store AlertStore, catalog *localization.Catalog, logger *slog.Logger) (*Bot, error) {
-	adapter := &Bot{api: api, store: store, catalog: catalog, logger: logger, states: map[int64]*wizardState{}}
+func NewBot(token string, adminUserID int64, api *Client, store AlertStore, catalog *localization.Catalog, logger *slog.Logger) (*Bot, error) {
+	adapter := &Bot{api: api, store: store, catalog: catalog, logger: logger, adminUserID: adminUserID, states: map[int64]*wizardState{}}
 	poller, err := tgbot.New(token, tgbot.WithDefaultHandler(adapter.handle))
 	if err != nil {
 		return nil, err
@@ -95,6 +98,10 @@ func (b *Bot) handleMessage(ctx context.Context, message *models.Message) {
 		case "language":
 			_, err := b.api.SendMessage(ctx, chatID, localizer.Text(localization.LanguagePrompt, nil), languageKeyboard(localizer))
 			b.logError(err)
+		case "broadcast":
+			if userID == b.adminUserID {
+				b.broadcast(ctx, chatID, text)
+			}
 		case "cancel":
 			b.clearState(userID)
 			_, err := b.api.SendMessage(ctx, chatID, localizer.Text(localization.SetupCancelled, nil), mainMenuKeyboard(localizer))
@@ -130,6 +137,55 @@ func (b *Bot) handleMessage(ctx context.Context, message *models.Message) {
 		b.saveState(userID, state)
 		b.logError(b.api.EditMessage(ctx, chatID, state.MessageID, renderConfirmation(localizer, state), confirmationKeyboard(localizer)))
 	}
+}
+
+func (b *Bot) broadcast(ctx context.Context, adminChatID int64, commandText string) {
+	message := commandPayload(commandText)
+	if message == "" {
+		_, err := b.api.SendPlainMessage(ctx, adminChatID, "Usage: /broadcast <message>")
+		b.logError(err)
+		return
+	}
+
+	chatIDs, err := b.store.ListUserChatIDs(ctx)
+	if err != nil {
+		b.logger.Error("broadcast recipient loading failed", "event", "broadcast.recipients_failed", "error", err)
+		_, sendErr := b.api.SendPlainMessage(ctx, adminChatID, "Broadcast failed: could not load recipients.")
+		b.logError(sendErr)
+		return
+	}
+
+	succeeded := 0
+	failed := 0
+	for index, chatID := range chatIDs {
+		if _, err := b.api.SendPlainMessage(ctx, chatID, message); err != nil {
+			failed++
+			b.logger.Warn("broadcast delivery failed", "event", "broadcast.delivery_failed", "chat_id", chatID, "error", err)
+		} else {
+			succeeded++
+		}
+
+		if index < len(chatIDs)-1 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
+		}
+	}
+
+	summary := "Broadcast complete: " + strconv.Itoa(succeeded) + " successful, " + strconv.Itoa(failed) + " failed."
+	_, err = b.api.SendPlainMessage(ctx, adminChatID, summary)
+	b.logError(err)
+}
+
+func commandPayload(text string) string {
+	fields := strings.Fields(text)
+	if len(fields) < 2 {
+		return ""
+	}
+
+	return strings.TrimSpace(strings.TrimPrefix(text, fields[0]))
 }
 
 func (b *Bot) handleCallback(ctx context.Context, callback *models.CallbackQuery) {

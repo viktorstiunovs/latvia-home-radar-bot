@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	TelegramBotToken string
-	ScraperContact   string
-	DatabaseURL      string
-	RabbitMQURL      string
-	PollInterval     time.Duration
-	LogLevel         string
+	TelegramBotToken    string
+	TelegramAdminUserID int64
+	ScraperContact      string
+	DatabaseURL         string
+	RabbitMQURL         string
+	PollInterval        time.Duration
+	LogLevel            string
 }
 
 func FromEnv() (Config, error) {
@@ -39,6 +40,16 @@ func FromEnv() (Config, error) {
 	}
 	if c.ScraperContact == "" {
 		return c, fmt.Errorf("SCRAPER_CONTACT is required")
+	}
+	if raw := strings.TrimSpace(os.Getenv("TELEGRAM_ADMIN_USER_ID")); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return c, fmt.Errorf("TELEGRAM_ADMIN_USER_ID: %w", err)
+		}
+		if value <= 0 {
+			return c, fmt.Errorf("TELEGRAM_ADMIN_USER_ID must be positive")
+		}
+		c.TelegramAdminUserID = value
 	}
 	seconds := 180
 	if raw := strings.TrimSpace(os.Getenv("POLL_INTERVAL_SECONDS")); raw != "" {

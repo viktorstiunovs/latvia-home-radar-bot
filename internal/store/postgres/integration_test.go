@@ -57,6 +57,13 @@ func TestBaselineAndNotificationFlow(t *testing.T) {
 	if defaultUser.LanguageTag != "en" {
 		t.Fatalf("unexpected fallback language: %s", defaultUser.LanguageTag)
 	}
+	chatIDs, err := store.ListUserChatIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chatIDs) != 2 || chatIDs[0] != 42 || chatIDs[1] != 43 {
+		t.Fatalf("unexpected user chat IDs: %v", chatIDs)
+	}
 	activated := time.Now().Add(-time.Minute)
 	filterID, err := store.CreateFilter(ctx, domain.SearchFilter{UserID: user.ID, DealType: domain.DealRent, PropertyTypes: []domain.PropertyType{domain.PropertyApartment}, AreaKeys: []string{"lv/riga"}, PriceMax: intPointer(800), Enabled: true, ActivatedAt: &activated})
 	if err != nil {

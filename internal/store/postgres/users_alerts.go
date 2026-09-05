@@ -15,6 +15,28 @@ func (s *Store) UpsertUser(ctx context.Context, telegramUserID, chatID int64, na
 	return user, err
 }
 
+func (s *Store) ListUserChatIDs(ctx context.Context) ([]int64, error) {
+	rows, err := s.pool.Query(ctx, `SELECT chat_id FROM users ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list user chat IDs: %w", err)
+	}
+	defer rows.Close()
+
+	var result []int64
+	for rows.Next() {
+		var chatID int64
+		if err := rows.Scan(&chatID); err != nil {
+			return nil, fmt.Errorf("scan user chat ID: %w", err)
+		}
+		result = append(result, chatID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate user chat IDs: %w", err)
+	}
+
+	return result, nil
+}
+
 func (s *Store) SetUserLanguage(ctx context.Context, telegramUserID int64, languageTag string) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `UPDATE users SET language_tag=$1 WHERE telegram_user_id=$2`, languageTag, telegramUserID)
 	return tag.RowsAffected() == 1, err

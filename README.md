@@ -23,7 +23,7 @@ docker compose up -d db rabbitmq
 go run ./cmd/bot
 ```
 
-Set `TELEGRAM_BOT_TOKEN` to a token from BotFather and `SCRAPER_CONTACT` to an email address or URL identifying the operator. The HTTP user agent includes this contact value. Replace both example infrastructure passwords before deploying the complete stack. Use URL-safe passwords because Compose also uses them in the application connection URLs; a command such as `openssl rand -hex 32` generates a suitable value.
+Set `TELEGRAM_BOT_TOKEN` to a token from BotFather and `SCRAPER_CONTACT` to an email address or URL identifying the operator. The HTTP user agent includes this contact value. Set `TELEGRAM_ADMIN_USER_ID` to your numeric Telegram user ID to enable the administrator-only `/broadcast` command; leaving it empty disables that command. Replace both example infrastructure passwords before deploying the complete stack. Use URL-safe passwords because Compose also uses them in the application connection URLs; a command such as `openssl rand -hex 32` generates a suitable value.
 
 `POSTGRES_DATA_SOURCE` accepts either a Docker named volume such as
 `postgres_data` or an absolute host directory. For example, the production
@@ -83,6 +83,12 @@ docker compose logs -f app
 ```
 
 The six-step inline wizard selects property type, deal type, canonical areas, price, rooms, and size. Pausing deletes pending messages for that alert; restarting updates its activation time so paused listings are not replayed. Deletion requires confirmation from the alerts screen.
+
+The configured administrator can send a plain-text message to every chat in the
+`users` table with `/broadcast <message>`. Delivery continues when an individual
+chat rejects the message, and the administrator receives successful and failed
+delivery counts when the broadcast finishes. The command is intentionally
+omitted from the public command list and ignored when invoked by any other user.
 
 ## Localization
 
