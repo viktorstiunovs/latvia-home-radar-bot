@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-05
+
+### Added
+
+- English, Latvian, and Russian localization.
+- Automatic Telegram language detection and `/language` selection.
+- Persistent user language preferences.
+- Localized filter workflows and listing notifications.
+
 ## [0.1.0] - 2026-09-04
 
 ### Added
@@ -25,5 +34,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Replaced the Python application while retaining compatibility with its
   existing PostgreSQL data.
 
-[Unreleased]: https://github.com/clive00lewis/latvia-home-radar/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/clive00lewis/latvia-home-radar/releases/tag/v0.1.0
+[Unreleased]: https://github.com/viktorstiunovs/latvia-home-radar-bot/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/viktorstiunovs/latvia-home-radar-bot/releases/tag/v0.1.0
+[0.2.0]: https://github.com/viktorstiunovs/latvia-home-radar-bot/releases/tag/v0.2.0

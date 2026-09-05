@@ -9,10 +9,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Store) UpsertUser(ctx context.Context, telegramUserID, chatID int64, name string) (int64, error) {
-	var id int64
-	var err = s.pool.QueryRow(ctx, `INSERT INTO users(telegram_user_id,chat_id,name,created_at) VALUES($1,$2,NULLIF($3,''),$4) ON CONFLICT(telegram_user_id) DO UPDATE SET chat_id=excluded.chat_id,name=COALESCE(excluded.name,users.name) RETURNING id`, telegramUserID, chatID, name, time.Now().UTC()).Scan(&id)
-	return id, err
+func (s *Store) UpsertUser(ctx context.Context, telegramUserID, chatID int64, name, languageTag string) (domain.User, error) {
+	var user domain.User
+	err := s.pool.QueryRow(ctx, `INSERT INTO users(telegram_user_id,chat_id,name,language_tag,created_at) VALUES($1,$2,NULLIF($3,''),COALESCE(NULLIF($4,''),'en'),$5) ON CONFLICT(telegram_user_id) DO UPDATE SET chat_id=excluded.chat_id,name=COALESCE(excluded.name,users.name) RETURNING id,language_tag`, telegramUserID, chatID, name, languageTag, time.Now().UTC()).Scan(&user.ID, &user.LanguageTag)
+	return user, err
+}
+
+func (s *Store) SetUserLanguage(ctx context.Context, telegramUserID int64, languageTag string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE users SET language_tag=$1 WHERE telegram_user_id=$2`, languageTag, telegramUserID)
+	return tag.RowsAffected() == 1, err
 }
 
 func (s *Store) ListChildAreas(ctx context.Context, parentKey string) ([]domain.AreaChoice, error) {

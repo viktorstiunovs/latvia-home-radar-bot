@@ -1,0 +1,296 @@
+[Welcome]
+other = "🏠 <b>Īpašumu paziņojumi Latvijā</b>\n\nIzveidojiet paziņojumu, un es nosūtīšu atbilstošus īpašumu sludinājumus, tiklīdz tie parādīsies."
+
+[Help]
+other = "<b>Komandas</b>\n\n/new — izveidot paziņojumu\n/alerts — skatīt savus paziņojumus\n/pause ID — apturēt paziņojumu\n/resume ID — atsākt paziņojumu\n/delete ID — dzēst paziņojumu\n/language — mainīt valodu\n/cancel — pārtraukt pašreizējo iestatīšanu"
+
+[SetupCancelled]
+other = "Iestatīšana atcelta. Jebkurā laikā varat sākt no jauna."
+
+[InvalidPriceRange]
+other = "⚠️ Izmantojiet min-max, min- vai -max. Tūkstošiem varat izmantot k, piemēram, 100k-200k."
+
+[InvalidSizeRange]
+other = "⚠️ Izmantojiet min-max, vienu skaitli, min- vai -max."
+
+[LanguagePrompt]
+other = "<b>Izvēlieties valodu</b>"
+
+[LanguageChanged]
+other = "Valoda nomainīta uz latviešu valodu."
+
+[LanguageEnglish]
+other = "English"
+
+[LanguageLatvian]
+other = "Latviešu"
+
+[LanguageRussian]
+other = "Русский"
+
+[ButtonCreateAlert]
+other = "Izveidot paziņojumu"
+
+[ButtonMyAlerts]
+other = "Mani paziņojumi"
+
+[ButtonChangeLanguage]
+other = "Mainīt valodu"
+
+[ButtonStopAlert]
+other = "Apturēt #{{.ID}}"
+
+[ButtonRestartAlert]
+other = "Atsākt #{{.ID}}"
+
+[ButtonDeleteAlert]
+other = "Dzēst #{{.ID}}"
+
+[ButtonCreateAnotherAlert]
+other = "Izveidot vēl vienu paziņojumu"
+
+[ButtonDeletePermanently]
+other = "Dzēst neatgriezeniski"
+
+[ButtonKeepAlert]
+other = "Paturēt paziņojumu"
+
+[ButtonCancel]
+other = "Atcelt"
+
+[ButtonBack]
+other = "Atpakaļ"
+
+[ButtonCustomRange]
+other = "Cits diapazons"
+
+[ButtonConfirmAlert]
+other = "Apstiprināt paziņojumu"
+
+[ButtonDoneSelected]
+zero = "Gatavs · atlasīts: {{.Count}}"
+one = "Gatavs · atlasīts: {{.Count}}"
+other = "Gatavs · atlasīts: {{.Count}}"
+
+[InvalidAlert]
+other = "Nederīgs paziņojums."
+
+[AlertNotFound]
+other = "Paziņojums nav atrasts."
+
+[AlertRestarted]
+other = "Paziņojums atsākts."
+
+[AlertStopped]
+other = "Paziņojums apturēts."
+
+[AlertDeleted]
+other = "Paziņojums izdzēsts."
+
+[WizardExpired]
+other = "Šīs iestatīšanas termiņš ir beidzies. Izmantojiet /new, lai sāktu no jauna."
+
+[ChooseAtLeastOneArea]
+other = "Izvēlieties vismaz vienu apgabalu."
+
+[DeleteAlertConfirm]
+other = "🗑 <b>Dzēst paziņojumu #{{.ID}}?</b>\n\nPaziņojums tiks neatgriezeniski dzēsts, un šo darbību nevarēs atsaukt."
+
+[CustomPricePrompt]
+other = "<b>Cits cenas diapazons</b>\n\nIevadiet minimālo un maksimālo cenu, atdalot tās ar defisi. Tūkstošiem varat izmantot <code>k</code>.\n\n<b>Piemēri</b>\n<code>300-700</code> — no €300 līdz €700\n<code>-700</code> — no €0 līdz €700\n<code>500-</code> vai <code>500+</code> — no €500 bez maksimālās cenas\n<code>100000-200000</code> — no €100 000 līdz €200 000\n<code>100k-200k</code> — tas pats, kas no €100 000 līdz €200 000\n<code>100k+</code> — no €100 000 bez maksimālās cenas\n\nNosūtiet cenas diapazonu nākamajā ziņojumā."
+
+[CustomSizePrompt]
+other = "<b>Cits platības diapazons</b>\n\nPiemēri: <code>40-80</code>, <code>50-</code>, <code>-70</code>\n\nNosūtiet platības diapazonu nākamajā ziņojumā."
+
+[AlertCreated]
+other = "✅ <b>Paziņojums #{{.ID}} ir aktīvs</b>\n\nEs paziņošu, kad parādīsies jauns atbilstošs īpašuma sludinājums. Iepriekš atrastie sludinājumi netiks nosūtīti atkārtoti."
+
+[Usage]
+other = "Lietošana: <code>/{{.Command}} ID</code>"
+
+[AlertPaused]
+other = "Paziņojums apturēts."
+
+[AlertResumed]
+other = "Paziņojums atsākts. Apturēšanas laikā atrastie sludinājumi netiks nosūtīti atkārtoti."
+
+[WizardStep]
+other = "<b>Jauns paziņojums · {{.Step}}. solis no 6</b>\n\n<b>{{.Title}}</b>\n{{.Detail}}"
+
+[StepPropertyTitle]
+other = "Kādu īpašuma veidu meklējat?"
+
+[StepPropertyDetail]
+other = "Izvēlieties dzīvokļus, mājas vai abus."
+
+[StepDealTitle]
+other = "Ko vēlaties darīt?"
+
+[StepDealDetail]
+other = "Izvēlieties, vai vēlaties īrēt vai pirkt."
+
+[StepAreaTitle]
+other = "Kur meklēt?"
+
+[StepAreaDetail]
+other = "Izvēlieties visu Latviju vai atveriet reģionu, lai norādītu precīzus apgabalus."
+
+[StepRoomsTitle]
+other = "Cik istabu?"
+
+[StepRoomsDetail]
+other = "Izvēlieties minimālo istabu skaitu."
+
+[StepSizeTitle]
+other = "Minimālā īpašuma platība?"
+
+[StepSizeDetail]
+other = "Izvēlieties tipisku minimumu vai ievadiet savu diapazonu."
+
+[StepPriceTitle]
+other = "Kāds ir jūsu budžets?"
+
+[StepPriceRentDetail]
+other = "Izvēlieties tipisku mēneša īres maksas diapazonu vai ievadiet savu."
+
+[StepPriceSaleDetail]
+other = "Izvēlieties tipisku pirkuma cenas diapazonu vai ievadiet savu."
+
+[ButtonApartment]
+other = "Dzīvoklis"
+
+[ButtonHouse]
+other = "Māja"
+
+[ButtonApartmentOrHouse]
+other = "Dzīvoklis vai māja"
+
+[ButtonRent]
+other = "Īrēt"
+
+[ButtonBuy]
+other = "Pirkt"
+
+[ButtonAllLatvia]
+other = "Visa Latvija"
+
+[ButtonRiga]
+other = "Rīga"
+
+[ButtonJurmala]
+other = "Jūrmala"
+
+[ButtonRigaRegion]
+other = "Rīgas reģions"
+
+[ButtonOtherRegions]
+other = "Citi"
+
+[ButtonAnyPrice]
+other = "Jebkura cena"
+
+[ButtonAny]
+other = "Jebkurš"
+
+[ButtonAnySize]
+other = "Jebkura platība"
+
+[AreaGroupDetail]
+other = "Izvēlieties visu reģionu vai vienu vai vairākus apgabalus."
+
+[AreaGroupSelectedDetail]
+zero = "Nav atlasīts neviens apgabals. Pieskarieties apgabaliem, lai tos pārslēgtu, pēc tam nospiediet Gatavs."
+one = "Atlasīts {{.Count}} apgabals. Pieskarieties apgabaliem, lai tos pārslēgtu, pēc tam nospiediet Gatavs."
+other = "Atlasīti {{.Count}} apgabali. Pieskarieties apgabaliem, lai tos pārslēgtu, pēc tam nospiediet Gatavs."
+
+[AreasInTitle]
+other = "Izvēlieties apgabalus: {{.Area}}"
+
+[OtherRegionsTitle]
+other = "Izvēlieties citus reģionus"
+
+[AllRegion]
+other = "Viss reģions: {{.Area}}"
+
+[ReviewAlert]
+other = "<b>Pārskatiet savu paziņojumu</b>\n\n🏘 <b>Īpašums:</b> {{.Property}}\n🔑 <b>Darījums:</b> {{.Deal}}\n📍 <b>Vieta:</b> {{.Area}}\n💶 <b>Cena:</b> {{.Price}}\n🚪 <b>Istabas:</b> {{.Rooms}}\n📐 <b>Platība:</b> {{.Size}}\n\nTiks nosūtīti tikai sludinājumi, kas atrasti pēc apstiprināšanas."
+
+[NoAlerts]
+other = "<b>Vēl nav paziņojumu</b>\n\nIzveidojiet paziņojumu, un es vērošu jaunus sludinājumus."
+
+[MyAlertsHeader]
+other = "<b>Mani paziņojumi</b>\n<i>Izmantojiet tālāk redzamās pogas, lai apturētu, atsāktu vai dzēstu paziņojumu.</i>"
+
+[StatusActive]
+other = "Aktīvs"
+
+[StatusPaused]
+other = "Apturēts"
+
+[AlertSummary]
+other = "{{.Icon}} <b>Paziņojums #{{.ID}}</b> · <i>{{.Status}}</i>\n<blockquote>🏘 <b>Īpašums:</b> {{.Property}}\n🔑 <b>Darījums:</b> {{.Deal}}\n📍 <b>Vieta:</b> {{.Area}}\n💶 <b>Cena:</b> {{.Price}}\n🚪 <b>Istabas:</b> {{.Rooms}}\n📐 <b>Platība:</b> {{.Size}}</blockquote>"
+
+[PropertyApartments]
+other = "Dzīvokļi"
+
+[PropertyHouses]
+other = "Mājas"
+
+[PropertyBoth]
+other = "Dzīvokļi un mājas"
+
+[DealRent]
+other = "Īre"
+
+[DealBuy]
+other = "Pirkšana"
+
+[RangeUpTo]
+other = "Līdz {{.Value}}"
+
+[ListingApartment]
+other = "Dzīvoklis"
+
+[ListingHouse]
+other = "Māja"
+
+[ListingForRent]
+other = "īrei"
+
+[ListingForSale]
+other = "pārdošanai"
+
+[ListingPriceOnRequest]
+other = "Cena pēc pieprasījuma"
+
+[ListingPerMonth]
+other = "{{.Price}} mēnesī"
+
+[ListingRooms]
+zero = "{{.Count}} istabu"
+one = "{{.Count}} istaba"
+other = "{{.Count}} istabas"
+
+[ListingStreet]
+other = "🛣 <b>Iela:</b> {{.Value}}"
+
+[ListingFloor]
+other = "🏬 <b>Stāvs:</b> {{.Value}}"
+
+[ListingSeries]
+other = "🏗 <b>Sērija:</b> {{.Value}}"
+
+[ListingHouseType]
+other = "🏠 <b>Mājas tips:</b> {{.Value}}"
+
+[ListingFloors]
+other = "🏗 <b>Stāvi:</b> {{.Count}}"
+
+[ListingLandArea]
+other = "🌳 <b>Zemes platība:</b> {{.Value}} m²"
+
+[ListingHeading]
+other = "{{.Icon}} <b>{{.Property}} {{.Action}} · {{.Price}}</b>"
+
+[ListingViewOn]
+other = "<a href=\"{{.URL}}\">Skatīt vietnē {{.Source}} →</a>"

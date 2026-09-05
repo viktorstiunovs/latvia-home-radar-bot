@@ -3,9 +3,11 @@ module github.com/clive00lewis/latvia-home-radar
 go 1.26.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/go-telegram/bot v1.19.0
 	github.com/jackc/pgx/v5 v5.7.6
+	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/pressly/goose/v3 v3.25.0
 	github.com/rabbitmq/amqp091-go v1.13.0
 	golang.org/x/text v0.41.0

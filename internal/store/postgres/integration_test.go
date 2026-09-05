@@ -33,14 +33,44 @@ func TestBaselineAndNotificationFlow(t *testing.T) {
 	if _, err := store.pool.Exec(ctx, `TRUNCATE consumed_events,outbox_events,notifications,filter_areas,listing_photos,listings,source_state,filters,source_areas,users RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
-	userID, err := store.UpsertUser(ctx, 42, 42, "Tester")
+	user, err := store.UpsertUser(ctx, 42, 42, "Tester", "lv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	activated := time.Now().Add(-time.Minute)
-	filterID, err := store.CreateFilter(ctx, domain.SearchFilter{UserID: userID, DealType: domain.DealRent, PropertyTypes: []domain.PropertyType{domain.PropertyApartment}, AreaKeys: []string{"lv/riga"}, PriceMax: intPointer(800), Enabled: true, ActivatedAt: &activated})
+	if user.LanguageTag != "lv" {
+		t.Fatalf("unexpected initial language: %s", user.LanguageTag)
+	}
+	if changed, err := store.SetUserLanguage(ctx, 42, "ru"); err != nil || !changed {
+		t.Fatalf("set user language: changed=%t err=%v", changed, err)
+	}
+	user, err = store.UpsertUser(ctx, 42, 42, "Tester", "en")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if user.LanguageTag != "ru" {
+		t.Fatalf("upsert replaced explicit language: %s", user.LanguageTag)
+	}
+	defaultUser, err := store.UpsertUser(ctx, 43, 43, "Default", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultUser.LanguageTag != "en" {
+		t.Fatalf("unexpected fallback language: %s", defaultUser.LanguageTag)
+	}
+	activated := time.Now().Add(-time.Minute)
+	filterID, err := store.CreateFilter(ctx, domain.SearchFilter{UserID: user.ID, DealType: domain.DealRent, PropertyTypes: []domain.PropertyType{domain.PropertyApartment}, AreaKeys: []string{"lv/riga"}, PriceMax: intPointer(800), Enabled: true, ActivatedAt: &activated})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := store.SetUserLanguage(ctx, 42, "lv"); err != nil || !changed {
+		t.Fatalf("change user language with alert: changed=%t err=%v", changed, err)
+	}
+	filters, err := store.ListFilters(ctx, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(filters) != 1 || filters[0].ID != filterID {
+		t.Fatalf("language change modified alerts: %+v", filters)
 	}
 	listing := domain.Listing{Source: "test", ExternalID: "one", URL: "https://example.test/one", DealType: domain.DealRent, PropertyType: domain.PropertyApartment, Title: "One", PriceEUR: intPointer(700), AreaKey: "lv/riga/centrs", AreaName: "Centrs", AreaType: "neighbourhood", AreaParentKey: "lv/riga", AreaParentName: "Rīga", DetailsEnriched: true}
 	baseline, err := store.ProcessDiscovered(ctx, "test:baseline", []domain.Listing{listing}, false)
@@ -87,7 +117,7 @@ func TestBaselineAndNotificationFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pending) != 1 || pending[0].FilterID != filterID || pending[0].Listing.ExternalID != "two" {
+	if len(pending) != 1 || pending[0].FilterID != filterID || pending[0].Listing.ExternalID != "two" || pending[0].LanguageTag != "lv" {
 		t.Fatalf("unexpected pending notification: %+v", pending)
 	}
 }

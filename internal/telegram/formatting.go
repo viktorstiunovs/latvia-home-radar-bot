@@ -7,22 +7,23 @@ import (
 	"strings"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/localization"
 )
 
-func FormatListing(l domain.Listing) string {
-	property, icon := "Apartment", "🏢"
+func FormatListing(localizer localization.Localizer, l domain.Listing) string {
+	property, icon := localizer.Text(localization.ListingApartment, nil), "🏢"
 	if l.PropertyType == domain.PropertyHouse {
-		property, icon = "House", "🏡"
+		property, icon = localizer.Text(localization.ListingHouse, nil), "🏡"
 	}
-	action := "for rent"
+	action := localizer.Text(localization.ListingForRent, nil)
 	if l.DealType == domain.DealSale {
-		action = "for sale"
+		action = localizer.Text(localization.ListingForSale, nil)
 	}
-	price := "Price on request"
+	price := localizer.Text(localization.ListingPriceOnRequest, nil)
 	if l.PriceEUR != nil {
 		price = "€" + groupInt(*l.PriceEUR)
 		if l.DealType == domain.DealRent {
-			price += " / month"
+			price = localizer.Text(localization.ListingPerMonth, map[string]any{"Price": price})
 		}
 	}
 	details := []string{}
@@ -41,11 +42,8 @@ func FormatListing(l domain.Listing) string {
 	}
 	facts := []string{}
 	if l.Rooms != nil {
-		word := "rooms"
-		if *l.Rooms == 1 {
-			word = "room"
-		}
-		facts = append(facts, fmt.Sprintf("🚪 %d %s", *l.Rooms, word))
+		data := map[string]any{"Count": *l.Rooms}
+		facts = append(facts, "🚪 "+localizer.Plural(localization.ListingRooms, *l.Rooms, data))
 	}
 	if l.AreaM2 != nil {
 		facts = append(facts, "📐 "+formatFloat(*l.AreaM2)+" m²")
@@ -54,7 +52,7 @@ func FormatListing(l domain.Listing) string {
 		details = append(details, strings.Join(facts, "  ·  "))
 	}
 	if l.Address != "" {
-		details = append(details, "🛣 <b>Street:</b> "+html.EscapeString(l.Address))
+		details = append(details, localizer.Text(localization.ListingStreet, map[string]any{"Value": html.EscapeString(l.Address)}))
 	}
 	if l.PropertyType == domain.PropertyApartment {
 		if l.Floor != nil {
@@ -62,20 +60,20 @@ func FormatListing(l domain.Listing) string {
 			if l.TotalFloors != nil {
 				floor += "/" + strconv.Itoa(*l.TotalFloors)
 			}
-			details = append(details, "🏬 <b>Floor:</b> "+floor)
+			details = append(details, localizer.Text(localization.ListingFloor, map[string]any{"Value": floor}))
 		}
 		if l.BuildingSeries != "" {
-			details = append(details, "🏗 <b>Series:</b> "+html.EscapeString(l.BuildingSeries))
+			details = append(details, localizer.Text(localization.ListingSeries, map[string]any{"Value": html.EscapeString(l.BuildingSeries)}))
 		}
 		if l.BuildingType != "" {
-			details = append(details, "🏠 <b>House type:</b> "+html.EscapeString(l.BuildingType))
+			details = append(details, localizer.Text(localization.ListingHouseType, map[string]any{"Value": html.EscapeString(l.BuildingType)}))
 		}
 	} else {
 		if l.TotalFloors != nil {
-			details = append(details, fmt.Sprintf("🏗 <b>Floors:</b> %d", *l.TotalFloors))
+			details = append(details, localizer.Text(localization.ListingFloors, map[string]any{"Count": *l.TotalFloors}))
 		}
 		if l.LandAreaM2 != nil {
-			details = append(details, "🌳 <b>Land area:</b> "+formatArea(*l.LandAreaM2)+" m²")
+			details = append(details, localizer.Text(localization.ListingLandArea, map[string]any{"Value": formatArea(*l.LandAreaM2)}))
 		}
 	}
 	title := []rune(l.Title)
@@ -83,7 +81,9 @@ func FormatListing(l domain.Listing) string {
 		title = title[:350]
 	}
 	source := providerName(l.Source)
-	sections := []string{fmt.Sprintf("%s <b>%s %s · %s</b>", icon, property, action, price), strings.Join(details, "\n"), "<i>" + html.EscapeString(string(title)) + "</i>", `<a href="` + html.EscapeString(l.URL) + `">View on ` + html.EscapeString(source) + ` →</a>`}
+	heading := localizer.Text(localization.ListingHeading, map[string]any{"Icon": icon, "Property": property, "Action": action, "Price": price})
+	link := localizer.Text(localization.ListingViewOn, map[string]any{"URL": html.EscapeString(l.URL), "Source": html.EscapeString(source)})
+	sections := []string{heading, strings.Join(details, "\n"), "<i>" + html.EscapeString(string(title)) + "</i>", link}
 	var nonempty []string
 	for _, section := range sections {
 		if section != "" && section != "<i></i>" {

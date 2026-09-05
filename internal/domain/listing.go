@@ -101,6 +101,7 @@ type PendingNotification struct {
 	TelegramUserID int64
 	UserName       string
 	ChatID         int64
+	LanguageTag    string
 	FilterID       int64
 	ListingID      int64
 	Listing        Listing

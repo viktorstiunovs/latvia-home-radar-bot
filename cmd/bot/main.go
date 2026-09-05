@@ -15,6 +15,7 @@ import (
 	"github.com/clive00lewis/latvia-home-radar/internal/broker/rabbitmq"
 	"github.com/clive00lewis/latvia-home-radar/internal/config"
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/localization"
 	"github.com/clive00lewis/latvia-home-radar/internal/provider"
 	"github.com/clive00lewis/latvia-home-radar/internal/provider/city24"
 	"github.com/clive00lewis/latvia-home-radar/internal/provider/sslv"
@@ -68,7 +69,14 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	transport := contactTransport{base: http.DefaultTransport, agent: cfg.UserAgent()}
 	httpClient := &http.Client{Timeout: 30 * time.Second, Transport: transport}
 	api := telegram.NewClient(cfg.TelegramBotToken, httpClient)
-	tgBot, err := telegram.NewBot(cfg.TelegramBotToken, api, store, logger)
+	catalog, err := localization.New()
+	if err != nil {
+		return err
+	}
+	if err := catalog.Validate(); err != nil {
+		return err
+	}
+	tgBot, err := telegram.NewBot(cfg.TelegramBotToken, api, store, catalog, logger)
 	if err != nil {
 		return err
 	}
@@ -77,7 +85,7 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	monitor := app.NewMonitor(store, sources, cfg.PollInterval, logger)
 	outbox := app.NewOutboxRelay(store, broker, logger)
 	matcher := app.NewListingMatcher(store, broker, logger)
-	notifier := app.NewNotifier(store, api, httpClient, logger)
+	notifier := app.NewNotifier(store, api, httpClient, catalog, logger)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

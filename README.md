@@ -9,6 +9,7 @@ A self-hosted Go Telegram bot that watches SS.lv and City24.lv for new Latvian a
 - Price, rooms, size, and hierarchical canonical-area filters.
 - First-poll baselines so deployment does not flood users with old listings.
 - Telegram media albums of up to ten photos and reusable Telegram file IDs.
+- English, Latvian, and Russian bot interfaces with a persisted language choice.
 - PostgreSQL persistence, RabbitMQ events, embedded Goose migrations, structured audit logs, and graceful shutdown.
 - One application process containing independently structured Telegram, source-monitoring, event-matching, and notification-delivery loops.
 
@@ -46,11 +47,38 @@ docker compose logs -f app
 /pause ID
 /resume ID
 /delete ID
+/language
 /cancel
 /help
 ```
 
 The six-step inline wizard selects property type, deal type, canonical areas, price, rooms, and size. Pausing deletes pending messages for that alert; restarting updates its activation time so paused listings are not replayed. Deletion requires confirmation from the alerts screen.
+
+## Localization
+
+User-facing Telegram text lives in the embedded TOML catalogs under
+`internal/localization/messages`. English is the fallback language; Latvian and
+Russian are selected automatically from Telegram's language tag for new users,
+and `/language` lets a user persist a different preference. Command names,
+callback data, event names, provider identifiers, and database enum values are
+language-independent and must not be translated.
+
+To add or change a message:
+
+1. Add or update its semantic message ID in `internal/localization/catalog.go`.
+2. Add the same message section to all three `active.<language>.toml` catalogs.
+3. Use Go template fields such as `{{.ID}}` for dynamic values and the
+   appropriate CLDR plural sections (`one`, `few`, `many`, `zero`, `other`).
+4. Preserve supported Telegram HTML markup and ensure provider- or user-owned
+   values are HTML-escaped in Go before passing them to a message template.
+5. Run `go test ./...`; catalog completeness and representative plural forms
+   are checked by the localization tests.
+
+To add another supported language, add its complete catalog, load it and add its
+base IETF language tag in `internal/localization/catalog.go`, expose it in the
+language keyboard, and add a new sequential migration that extends the
+`users_language_tag_check` constraint. Never rewrite the existing language
+migration after it may have been applied.
 
 ## Database migration and cutover
 

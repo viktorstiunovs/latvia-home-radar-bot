@@ -1,0 +1,294 @@
+[Welcome]
+description = "Displayed after the start command"
+other = "🏠 <b>Property alerts for Latvia</b>\n\nCreate an alert once and I’ll send matching properties as soon as they appear."
+
+[Help]
+other = "<b>Commands</b>\n\n/new — create an alert\n/alerts — view your alerts\n/pause ID — pause an alert\n/resume ID — resume an alert\n/delete ID — delete an alert\n/language — change language\n/cancel — stop the current setup"
+
+[SetupCancelled]
+other = "Setup cancelled. You can start again whenever you’re ready."
+
+[InvalidPriceRange]
+other = "⚠️ Use min-max, min-, or -max. You may use k, for example 100k-200k."
+
+[InvalidSizeRange]
+other = "⚠️ Use min-max, one number, min-, or -max."
+
+[LanguagePrompt]
+other = "<b>Choose your language</b>"
+
+[LanguageChanged]
+other = "Language changed to English."
+
+[LanguageEnglish]
+other = "English"
+
+[LanguageLatvian]
+other = "Latviešu"
+
+[LanguageRussian]
+other = "Русский"
+
+[ButtonCreateAlert]
+other = "Create alert"
+
+[ButtonMyAlerts]
+other = "My alerts"
+
+[ButtonChangeLanguage]
+other = "Change language"
+
+[ButtonStopAlert]
+other = "Stop #{{.ID}}"
+
+[ButtonRestartAlert]
+other = "Restart #{{.ID}}"
+
+[ButtonDeleteAlert]
+other = "Delete #{{.ID}}"
+
+[ButtonCreateAnotherAlert]
+other = "Create another alert"
+
+[ButtonDeletePermanently]
+other = "Delete permanently"
+
+[ButtonKeepAlert]
+other = "Keep alert"
+
+[ButtonCancel]
+other = "Cancel"
+
+[ButtonBack]
+other = "Back"
+
+[ButtonCustomRange]
+other = "Custom range"
+
+[ButtonConfirmAlert]
+other = "Confirm alert"
+
+[ButtonDoneSelected]
+one = "Done · {{.Count}} selected"
+other = "Done · {{.Count}} selected"
+
+[InvalidAlert]
+other = "Invalid alert."
+
+[AlertNotFound]
+other = "Alert not found."
+
+[AlertRestarted]
+other = "Alert restarted."
+
+[AlertStopped]
+other = "Alert stopped."
+
+[AlertDeleted]
+other = "Alert deleted."
+
+[WizardExpired]
+other = "This setup has expired. Use /new to start again."
+
+[ChooseAtLeastOneArea]
+other = "Choose at least one area."
+
+[DeleteAlertConfirm]
+other = "🗑 <b>Delete alert #{{.ID}}?</b>\n\nThis permanently removes the alert and cannot be undone."
+
+[CustomPricePrompt]
+other = "<b>Custom price</b>\n\nEnter a minimum and maximum separated by a hyphen. You can use <code>k</code> for thousands.\n\n<b>Examples</b>\n<code>300-700</code> — From €300 to €700\n<code>-700</code> — From €0 to €700\n<code>500-</code> or <code>500+</code> — From €500 with no maximum\n<code>100000-200000</code> — From €100,000 to €200,000\n<code>100k-200k</code> — Same as €100,000 to €200,000\n<code>100k+</code> — From €100,000 with no maximum\n\nSend the price range as your next message."
+
+[CustomSizePrompt]
+other = "<b>Custom size</b>\n\nExamples: <code>40-80</code>, <code>50-</code>, <code>-70</code>\n\nSend the size range as your next message."
+
+[AlertCreated]
+other = "✅ <b>Alert #{{.ID}} is active</b>\n\nI’ll notify you when a new matching property appears. Existing listings won’t be replayed."
+
+[Usage]
+other = "Usage: <code>/{{.Command}} ID</code>"
+
+[AlertPaused]
+other = "Alert paused."
+
+[AlertResumed]
+other = "Alert resumed. Paused listings won’t be replayed."
+
+[WizardStep]
+other = "<b>New alert · Step {{.Step}}/6</b>\n\n<b>{{.Title}}</b>\n{{.Detail}}"
+
+[StepPropertyTitle]
+other = "What type of property?"
+
+[StepPropertyDetail]
+other = "Choose apartments, houses, or both."
+
+[StepDealTitle]
+other = "What are you looking for?"
+
+[StepDealDetail]
+other = "Choose whether you want to rent or buy."
+
+[StepAreaTitle]
+other = "Where should I search?"
+
+[StepAreaDetail]
+other = "Choose all Latvia or open a region to select exact areas."
+
+[StepRoomsTitle]
+other = "How many rooms?"
+
+[StepRoomsDetail]
+other = "Choose the minimum room requirement."
+
+[StepSizeTitle]
+other = "Minimum property size?"
+
+[StepSizeDetail]
+other = "Choose a common minimum or enter a custom range."
+
+[StepPriceTitle]
+other = "What is your budget?"
+
+[StepPriceRentDetail]
+other = "Choose a common monthly rent range or enter a custom one."
+
+[StepPriceSaleDetail]
+other = "Choose a common purchase price range or enter a custom one."
+
+[ButtonApartment]
+other = "Apartment"
+
+[ButtonHouse]
+other = "House"
+
+[ButtonApartmentOrHouse]
+other = "Apartment or house"
+
+[ButtonRent]
+other = "Rent"
+
+[ButtonBuy]
+other = "Buy"
+
+[ButtonAllLatvia]
+other = "All Latvia"
+
+[ButtonRiga]
+other = "Rīga"
+
+[ButtonJurmala]
+other = "Jūrmala"
+
+[ButtonRigaRegion]
+other = "Rīga region"
+
+[ButtonOtherRegions]
+other = "Other"
+
+[ButtonAnyPrice]
+other = "Any price"
+
+[ButtonAny]
+other = "Any"
+
+[ButtonAnySize]
+other = "Any size"
+
+[AreaGroupDetail]
+other = "Choose the whole region or select one or more areas."
+
+[AreaGroupSelectedDetail]
+one = "{{.Count}} selected. Tap areas to toggle them, then press Done."
+other = "{{.Count}} selected. Tap areas to toggle them, then press Done."
+
+[AreasInTitle]
+other = "Choose areas in {{.Area}}"
+
+[OtherRegionsTitle]
+other = "Choose other regions"
+
+[AllRegion]
+other = "All {{.Area}}"
+
+[ReviewAlert]
+other = "<b>Review your alert</b>\n\n🏘 <b>Property:</b> {{.Property}}\n🔑 <b>Deal:</b> {{.Deal}}\n📍 <b>Area:</b> {{.Area}}\n💶 <b>Price:</b> {{.Price}}\n🚪 <b>Rooms:</b> {{.Rooms}}\n📐 <b>Size:</b> {{.Size}}\n\nOnly listings discovered after confirmation will be sent."
+
+[NoAlerts]
+other = "<b>No alerts yet</b>\n\nCreate one and I’ll watch new listings for you."
+
+[MyAlertsHeader]
+other = "<b>My alerts</b>\n<i>Use the buttons below to stop, restart, or delete an alert.</i>"
+
+[StatusActive]
+other = "Active"
+
+[StatusPaused]
+other = "Paused"
+
+[AlertSummary]
+other = "{{.Icon}} <b>Alert #{{.ID}}</b> · <i>{{.Status}}</i>\n<blockquote>🏘 <b>Property:</b> {{.Property}}\n🔑 <b>Deal:</b> {{.Deal}}\n📍 <b>Area:</b> {{.Area}}\n💶 <b>Price:</b> {{.Price}}\n🚪 <b>Rooms:</b> {{.Rooms}}\n📐 <b>Size:</b> {{.Size}}</blockquote>"
+
+[PropertyApartments]
+other = "Apartments"
+
+[PropertyHouses]
+other = "Houses"
+
+[PropertyBoth]
+other = "Apartments & houses"
+
+[DealRent]
+other = "Rent"
+
+[DealBuy]
+other = "Buy"
+
+[RangeUpTo]
+other = "Up to {{.Value}}"
+
+[ListingApartment]
+other = "Apartment"
+
+[ListingHouse]
+other = "House"
+
+[ListingForRent]
+other = "for rent"
+
+[ListingForSale]
+other = "for sale"
+
+[ListingPriceOnRequest]
+other = "Price on request"
+
+[ListingPerMonth]
+other = "{{.Price}} / month"
+
+[ListingRooms]
+one = "{{.Count}} room"
+other = "{{.Count}} rooms"
+
+[ListingStreet]
+other = "🛣 <b>Street:</b> {{.Value}}"
+
+[ListingFloor]
+other = "🏬 <b>Floor:</b> {{.Value}}"
+
+[ListingSeries]
+other = "🏗 <b>Series:</b> {{.Value}}"
+
+[ListingHouseType]
+other = "🏠 <b>House type:</b> {{.Value}}"
+
+[ListingFloors]
+other = "🏗 <b>Floors:</b> {{.Count}}"
+
+[ListingLandArea]
+other = "🌳 <b>Land area:</b> {{.Value}} m²"
+
+[ListingHeading]
+other = "{{.Icon}} <b>{{.Property}} {{.Action}} · {{.Price}}</b>"
+
+[ListingViewOn]
+other = "<a href=\"{{.URL}}\">View on {{.Source}} →</a>"

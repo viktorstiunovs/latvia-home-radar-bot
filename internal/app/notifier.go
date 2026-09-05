@@ -8,18 +8,20 @@ import (
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/localization"
 	"github.com/clive00lewis/latvia-home-radar/internal/telegram"
 )
 
 type Notifier struct {
-	store  NotificationStore
-	api    *telegram.Client
-	http   *http.Client
-	logger *slog.Logger
+	store   NotificationStore
+	api     *telegram.Client
+	http    *http.Client
+	catalog *localization.Catalog
+	logger  *slog.Logger
 }
 
-func NewNotifier(store NotificationStore, api *telegram.Client, httpClient *http.Client, logger *slog.Logger) *Notifier {
-	return &Notifier{store: store, api: api, http: httpClient, logger: logger}
+func NewNotifier(store NotificationStore, api *telegram.Client, httpClient *http.Client, catalog *localization.Catalog, logger *slog.Logger) *Notifier {
+	return &Notifier{store: store, api: api, http: httpClient, catalog: catalog, logger: logger}
 }
 
 func (n *Notifier) Run(ctx context.Context) error {
@@ -53,14 +55,15 @@ func (n *Notifier) deliver(ctx context.Context, item domain.PendingNotification)
 	if len(cached) == 0 {
 		photos = telegram.DownloadPhotos(ctx, n.http, item.Listing, n.logger)
 	}
-	ids, err := n.api.SendPhotos(ctx, item.ChatID, telegram.FormatListing(item.Listing), photos, cached)
+	caption := n.caption(item)
+	ids, err := n.api.SendPhotos(ctx, item.ChatID, caption, photos, cached)
 	var apiErr *telegram.APIError
 	if err != nil && len(cached) > 0 && errors.As(err, &apiErr) && apiErr.BadRequest() {
 		if clearErr := n.store.ClearPhotoFileIDs(ctx, item.ListingID); clearErr != nil {
 			return clearErr
 		}
 		photos = telegram.DownloadPhotos(ctx, n.http, item.Listing, n.logger)
-		ids, err = n.api.SendPhotos(ctx, item.ChatID, telegram.FormatListing(item.Listing), photos, nil)
+		ids, err = n.api.SendPhotos(ctx, item.ChatID, caption, photos, nil)
 	}
 	if err != nil {
 		if errors.As(err, &apiErr) {
@@ -97,6 +100,10 @@ func (n *Notifier) deliver(ctx context.Context, item domain.PendingNotification)
 	case <-time.After(50 * time.Millisecond):
 	}
 	return nil
+}
+
+func (n *Notifier) caption(item domain.PendingNotification) string {
+	return telegram.FormatListing(n.catalog.For(item.LanguageTag), item.Listing)
 }
 
 func sameStrings(a, b []string) bool {

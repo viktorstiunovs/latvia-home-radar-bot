@@ -9,12 +9,14 @@ import (
 	"strings"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/localization"
 )
 
 type wizardState struct {
-	OwnerID, ChatID                           int64
+	OwnerID, UserID, ChatID                   int64
 	MessageID                                 int
 	Stage                                     string
+	LanguageTag                               string
 	PropertyTypes                             []domain.PropertyType
 	DealType                                  domain.DealType
 	AreaKeys, AreaLabels                      []string
@@ -24,12 +26,13 @@ type wizardState struct {
 	AreaMin, AreaMax                          *float64
 }
 type intOption struct {
-	Action, Label string
-	Min, Max      *int
+	Action   string
+	Min, Max *int
 }
+
 type floatOption struct {
-	Action, Label string
-	Min, Max      *float64
+	Action   string
+	Min, Max *float64
 }
 
 func ip(v int) *int {
@@ -41,159 +44,227 @@ func fp(v float64) *float64 {
 }
 
 var rentPrices = []intOption{
-	{"any", "Any price", nil, nil},
-	{"max500", "Up to €500", nil, ip(500)},
-	{"max800", "Up to €800", nil, ip(800)},
-	{"500to1000", "€500–€1,000", ip(500), ip(1000)}}
+	{"any", nil, nil},
+	{"max500", nil, ip(500)},
+	{"max800", nil, ip(800)},
+	{"500to1000", ip(500), ip(1000)}}
 
 var salePrices = []intOption{
-	{"any", "Any price", nil, nil},
-	{"max100k", "Up to €100k", nil, ip(100000)},
-	{"max150k", "Up to €150k", nil, ip(150000)},
-	{"100to200k", "€100k–€200k", ip(100000), ip(200000)}}
+	{"any", nil, nil},
+	{"max100k", nil, ip(100000)},
+	{"max150k", nil, ip(150000)},
+	{"100to200k", ip(100000), ip(200000)}}
 
 var rooms = []intOption{
-	{"any", "Any", nil, nil},
-	{"1", "1", ip(1), ip(1)},
-	{"2", "2", ip(2), ip(2)},
-	{"3", "3", ip(3), ip(3)},
-	{"4plus", "4+", ip(4), nil}}
+	{"any", nil, nil},
+	{"1", ip(1), ip(1)},
+	{"2", ip(2), ip(2)},
+	{"3", ip(3), ip(3)},
+	{"4plus", ip(4), nil}}
 
 var sizes = []floatOption{
-	{"any", "Any size", nil, nil},
-	{"30plus", "30+ m²", fp(30), nil},
-	{"50plus", "50+ m²", fp(50), nil},
-	{"70plus", "70+ m²", fp(70), nil}}
+	{"any", nil, nil},
+	{"30plus", fp(30), nil},
+	{"50plus", fp(50), nil},
+	{"70plus", fp(70), nil}}
 
-const customPriceGuide = "Enter a minimum and maximum separated by a hyphen. You can use <code>k</code> for thousands.\n\n<b>Examples</b>\n<code>300-700</code> — From €300 to €700\n<code>-700</code> — From €0 to €700\n<code>500-</code> or <code>500+</code> — From €500 with no maximum\n<code>100000-200000</code> — From €100,000 to €200,000\n<code>100k-200k</code> — Same as €100,000 to €200,000\n<code>100k+</code> — From €100,000 with no maximum"
-
-func mainMenuKeyboard() *keyboard {
-	return &keyboard{InlineKeyboard: [][]inlineButton{{button("Create alert", "menu:new")}, {button("My alerts", "menu:filters")}}}
+func mainMenuKeyboard(localizer localization.Localizer) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{
+		{button(localizer.Text(localization.ButtonCreateAlert, nil), "menu:new")},
+		{button(localizer.Text(localization.ButtonMyAlerts, nil), "menu:filters")},
+		{button(localizer.Text(localization.ButtonChangeLanguage, nil), "menu:language")},
+	}}
 }
 
-func alertsKeyboard(filters []domain.SavedFilter) *keyboard {
+func alertsKeyboard(localizer localization.Localizer, filters []domain.SavedFilter) *keyboard {
 	rows := [][]inlineButton{}
 	for _, f := range filters {
-		label, action := "Stop", "stop"
+		labelID, action := localization.ButtonStopAlert, "stop"
 		if !f.Enabled {
-			label, action = "Restart", "restart"
+			labelID, action = localization.ButtonRestartAlert, "restart"
 		}
-		rows = append(rows, []inlineButton{button(fmt.Sprintf("%s #%d", label, f.ID), fmt.Sprintf("alert:%s:%d", action, f.ID)), button(fmt.Sprintf("Delete #%d", f.ID), fmt.Sprintf("alert:delete:%d", f.ID))})
+		data := map[string]any{"ID": f.ID}
+		rows = append(rows, []inlineButton{
+			button(localizer.Text(labelID, data), fmt.Sprintf("alert:%s:%d", action, f.ID)),
+			button(localizer.Text(localization.ButtonDeleteAlert, data), fmt.Sprintf("alert:delete:%d", f.ID)),
+		})
 	}
-	label := "Create alert"
+	labelID := localization.ButtonCreateAlert
 	if len(filters) > 0 {
-		label = "Create another alert"
+		labelID = localization.ButtonCreateAnotherAlert
 	}
-	rows = append(rows, []inlineButton{button(label, "menu:new")})
+	rows = append(rows, []inlineButton{button(localizer.Text(labelID, nil), "menu:new")})
 	return &keyboard{InlineKeyboard: rows}
 }
 
-func deleteAlertKeyboard(id string) *keyboard {
-	return &keyboard{InlineKeyboard: [][]inlineButton{{button("Delete permanently", "alert:confirm-delete:"+id)}, {button("Keep alert", "alert:back")}}}
+func deleteAlertKeyboard(localizer localization.Localizer, id string) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{
+		{button(localizer.Text(localization.ButtonDeletePermanently, nil), "alert:confirm-delete:"+id)},
+		{button(localizer.Text(localization.ButtonKeepAlert, nil), "alert:back")},
+	}}
 }
 
-func wizardStep(step int, title, detail string) string {
-	return fmt.Sprintf("<b>New alert · Step %d/6</b>\n\n<b>%s</b>\n%s", step, html.EscapeString(title), html.EscapeString(detail))
+func languageKeyboard(localizer localization.Localizer) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{{
+		button(localizer.Text(localization.LanguageEnglish, nil), "lang:en"),
+		button(localizer.Text(localization.LanguageLatvian, nil), "lang:lv"),
+		button(localizer.Text(localization.LanguageRussian, nil), "lang:ru"),
+	}}}
 }
 
-func renderPropertyStep() string {
-	return wizardStep(1, "What type of property?", "Choose apartments, houses, or both.")
+func wizardStep(localizer localization.Localizer, step int, title, detail string) string {
+	return localizer.Text(localization.WizardStep, map[string]any{
+		"Step":   step,
+		"Title":  html.EscapeString(title),
+		"Detail": html.EscapeString(detail),
+	})
 }
 
-func renderDealStep() string {
-	return wizardStep(2, "What are you looking for?", "Choose whether you want to rent or buy.")
+func renderPropertyStep(localizer localization.Localizer) string {
+	return wizardStep(localizer, 1, localizer.Text(localization.StepPropertyTitle, nil), localizer.Text(localization.StepPropertyDetail, nil))
 }
 
-func renderAreaStep() string {
-	return wizardStep(3, "Where should I search?", "Choose all Latvia or open a region to select exact areas.")
+func renderDealStep(localizer localization.Localizer) string {
+	return wizardStep(localizer, 2, localizer.Text(localization.StepDealTitle, nil), localizer.Text(localization.StepDealDetail, nil))
 }
 
-func renderRoomsStep() string {
-	return wizardStep(5, "How many rooms?", "Choose the minimum room requirement.")
+func renderAreaStep(localizer localization.Localizer) string {
+	return wizardStep(localizer, 3, localizer.Text(localization.StepAreaTitle, nil), localizer.Text(localization.StepAreaDetail, nil))
 }
 
-func renderSizeStep() string {
-	return wizardStep(6, "Minimum property size?", "Choose a common minimum or enter a custom range.")
+func renderRoomsStep(localizer localization.Localizer) string {
+	return wizardStep(localizer, 5, localizer.Text(localization.StepRoomsTitle, nil), localizer.Text(localization.StepRoomsDetail, nil))
 }
 
-func renderPriceStep(deal domain.DealType) string {
-	context := "monthly rent"
+func renderSizeStep(localizer localization.Localizer) string {
+	return wizardStep(localizer, 6, localizer.Text(localization.StepSizeTitle, nil), localizer.Text(localization.StepSizeDetail, nil))
+}
+
+func renderPriceStep(localizer localization.Localizer, deal domain.DealType) string {
+	detailID := localization.StepPriceRentDetail
 	if deal == domain.DealSale {
-		context = "purchase price"
+		detailID = localization.StepPriceSaleDetail
 	}
-	return wizardStep(4, "What is your budget?", "Choose a common "+context+" range or enter a custom one.")
+	return wizardStep(localizer, 4, localizer.Text(localization.StepPriceTitle, nil), localizer.Text(detailID, nil))
 }
 
-func propertyKeyboard() *keyboard {
-	return &keyboard{InlineKeyboard: [][]inlineButton{{button("Apartment", "w1:t:apartment")}, {button("House", "w1:t:house")}, {button("Apartment or house", "w1:t:both")}, {button("Cancel", "w1:x")}}}
+func propertyKeyboard(localizer localization.Localizer) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{
+		{button(localizer.Text(localization.ButtonApartment, nil), "w1:t:apartment")},
+		{button(localizer.Text(localization.ButtonHouse, nil), "w1:t:house")},
+		{button(localizer.Text(localization.ButtonApartmentOrHouse, nil), "w1:t:both")},
+		{button(localizer.Text(localization.ButtonCancel, nil), "w1:x")},
+	}}
 }
 
-func dealKeyboard() *keyboard {
-	return &keyboard{InlineKeyboard: [][]inlineButton{{button("Rent", "w1:d:rent"), button("Buy", "w1:d:sale")}, {button("Cancel", "w1:x")}}}
+func dealKeyboard(localizer localization.Localizer) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{
+		{button(localizer.Text(localization.ButtonRent, nil), "w1:d:rent"), button(localizer.Text(localization.ButtonBuy, nil), "w1:d:sale")},
+		{button(localizer.Text(localization.ButtonCancel, nil), "w1:x")},
+	}}
 }
 
-func areaScopeKeyboard() *keyboard {
-	return &keyboard{InlineKeyboard: [][]inlineButton{{button("All Latvia", "w1:a:all")}, {button("Rīga", "w1:ag:riga")}, {button("Jūrmala", "w1:ag:jurmala")}, {button("Rīga region", "w1:ag:riga-region")}, {button("Other", "w1:ag:other")}, {button("Cancel", "w1:x")}}}
+func areaScopeKeyboard(localizer localization.Localizer) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{
+		{button(localizer.Text(localization.ButtonAllLatvia, nil), "w1:a:all")},
+		{button(localizer.Text(localization.ButtonRiga, nil), "w1:ag:riga")},
+		{button(localizer.Text(localization.ButtonJurmala, nil), "w1:ag:jurmala")},
+		{button(localizer.Text(localization.ButtonRigaRegion, nil), "w1:ag:riga-region")},
+		{button(localizer.Text(localization.ButtonOtherRegions, nil), "w1:ag:other")},
+		{button(localizer.Text(localization.ButtonCancel, nil), "w1:x")},
+	}}
 }
 
-func navigationKeyboard(back string) *keyboard {
-	return &keyboard{InlineKeyboard: [][]inlineButton{{button("Back", back), button("Cancel", "w1:x")}}}
+func navigationKeyboard(localizer localization.Localizer, back string) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{{
+		button(localizer.Text(localization.ButtonBack, nil), back),
+		button(localizer.Text(localization.ButtonCancel, nil), "w1:x"),
+	}}}
 }
 
-func priceKeyboard(deal domain.DealType) *keyboard {
+func priceKeyboard(localizer localization.Localizer, deal domain.DealType) *keyboard {
 	options := rentPrices
 	if deal == domain.DealSale {
 		options = salePrices
 	}
 	rows := [][]inlineButton{}
 	for i := 0; i < len(options); i += 2 {
-		row := []inlineButton{button(options[i].Label, "w1:p:"+options[i].Action)}
+		row := []inlineButton{button(priceOptionLabel(localizer, options[i]), "w1:p:"+options[i].Action)}
 		if i+1 < len(options) {
-			row = append(row, button(options[i+1].Label, "w1:p:"+options[i+1].Action))
+			row = append(row, button(priceOptionLabel(localizer, options[i+1]), "w1:p:"+options[i+1].Action))
 		}
 		rows = append(rows, row)
 	}
-	rows = append(rows, []inlineButton{button("Custom range", "w1:p:custom")}, []inlineButton{button("Cancel", "w1:x")})
+	rows = append(rows,
+		[]inlineButton{button(localizer.Text(localization.ButtonCustomRange, nil), "w1:p:custom")},
+		[]inlineButton{button(localizer.Text(localization.ButtonCancel, nil), "w1:x")},
+	)
 	return &keyboard{InlineKeyboard: rows}
 }
 
-func roomsKeyboard() *keyboard {
-	return optionIntKeyboard("w1:r:", rooms)
+func priceOptionLabel(localizer localization.Localizer, option intOption) string {
+	if option.Min == nil && option.Max == nil {
+		return localizer.Text(localization.ButtonAnyPrice, nil)
+	}
+
+	return formatIntRange(localizer, option.Min, option.Max, "€", "")
 }
 
-func sizeKeyboard() *keyboard {
-	rows := optionFloatKeyboard("w1:s:", sizes).InlineKeyboard
-	rows = append(rows, []inlineButton{button("Custom range", "w1:s:custom")})
+func roomsKeyboard(localizer localization.Localizer) *keyboard {
+	return optionIntKeyboard(localizer, "w1:r:", rooms)
+}
+
+func sizeKeyboard(localizer localization.Localizer) *keyboard {
+	rows := optionFloatKeyboard(localizer, "w1:s:", sizes).InlineKeyboard
+	rows = append(rows, []inlineButton{button(localizer.Text(localization.ButtonCustomRange, nil), "w1:s:custom")})
 	return &keyboard{InlineKeyboard: rows}
 }
 
-func optionIntKeyboard(prefix string, options []intOption) *keyboard {
+func optionIntKeyboard(localizer localization.Localizer, prefix string, options []intOption) *keyboard {
 	rows := [][]inlineButton{}
 	for i := 0; i < len(options); i += 3 {
 		row := []inlineButton{}
 		for j := i; j < len(options) && j < i+3; j++ {
-			row = append(row, button(options[j].Label, prefix+options[j].Action))
+			label := localizer.Text(localization.ButtonAny, nil)
+			if options[j].Min != nil {
+				label = groupInt(*options[j].Min)
+				if options[j].Max == nil {
+					label += "+"
+				}
+			}
+			row = append(row, button(label, prefix+options[j].Action))
 		}
 		rows = append(rows, row)
 	}
-	rows = append(rows, []inlineButton{button("Cancel", "w1:x")})
+	rows = append(rows, []inlineButton{button(localizer.Text(localization.ButtonCancel, nil), "w1:x")})
 	return &keyboard{InlineKeyboard: rows}
 }
 
-func optionFloatKeyboard(prefix string, options []floatOption) *keyboard {
+func optionFloatKeyboard(localizer localization.Localizer, prefix string, options []floatOption) *keyboard {
 	rows := [][]inlineButton{}
 	for i := 0; i < len(options); i += 2 {
-		row := []inlineButton{button(options[i].Label, prefix+options[i].Action)}
+		row := []inlineButton{button(sizeOptionLabel(localizer, options[i]), prefix+options[i].Action)}
 		if i+1 < len(options) {
-			row = append(row, button(options[i+1].Label, prefix+options[i+1].Action))
+			row = append(row, button(sizeOptionLabel(localizer, options[i+1]), prefix+options[i+1].Action))
 		}
 		rows = append(rows, row)
 	}
 	return &keyboard{InlineKeyboard: rows}
 }
 
-func confirmationKeyboard() *keyboard {
-	return &keyboard{InlineKeyboard: [][]inlineButton{{button("Confirm alert", "w1:ok")}, {button("Cancel", "w1:x")}}}
+func sizeOptionLabel(localizer localization.Localizer, option floatOption) string {
+	if option.Min == nil && option.Max == nil {
+		return localizer.Text(localization.ButtonAnySize, nil)
+	}
+
+	return formatFloatRange(localizer, option.Min, option.Max, "", " m²")
+}
+
+func confirmationKeyboard(localizer localization.Localizer) *keyboard {
+	return &keyboard{InlineKeyboard: [][]inlineButton{
+		{button(localizer.Text(localization.ButtonConfirmAlert, nil), "w1:ok")},
+		{button(localizer.Text(localization.ButtonCancel, nil), "w1:x")},
+	}}
 }
 
 func priceOption(deal domain.DealType, action string) (intOption, bool) {
@@ -229,25 +300,27 @@ func sizeOption(action string) (floatOption, bool) {
 
 func (b *Bot) toPrice(ctx context.Context, userID int64, state *wizardState) {
 	state.Stage = "price"
-	b.editState(ctx, userID, state, renderPriceStep(state.DealType), priceKeyboard(state.DealType))
+	localizer := b.catalog.For(state.LanguageTag)
+	b.editState(ctx, userID, state, renderPriceStep(localizer, state.DealType), priceKeyboard(localizer, state.DealType))
 }
 
 func (b *Bot) openAreaGroup(ctx context.Context, userID int64, state *wizardState, group string) {
+	localizer := b.catalog.For(state.LanguageTag)
 	var choices []domain.AreaChoice
 	var err error
 	switch group {
 	case "riga":
-		state.AreaParentKey, state.AreaParentLabel = "lv/riga", "Rīga"
+		state.AreaParentKey, state.AreaParentLabel = "lv/riga", localizer.Text(localization.ButtonRiga, nil)
 		choices, err = b.store.ListChildAreas(ctx, state.AreaParentKey)
 	case "jurmala":
-		state.AreaParentKey, state.AreaParentLabel = "lv/jurmala", "Jūrmala"
+		state.AreaParentKey, state.AreaParentLabel = "lv/jurmala", localizer.Text(localization.ButtonJurmala, nil)
 		choices, err = b.store.ListChildAreas(ctx, state.AreaParentKey)
 	case "riga-region":
-		state.AreaParentKey, state.AreaParentLabel = "lv/rigas-rajons", "Rīga region"
+		state.AreaParentKey, state.AreaParentLabel = "lv/rigas-rajons", localizer.Text(localization.ButtonRigaRegion, nil)
 		choices, err = b.store.ListChildAreas(ctx, state.AreaParentKey)
 	case "other":
 		state.AreaParentKey = ""
-		state.AreaParentLabel = "Other regions"
+		state.AreaParentLabel = localizer.Text(localization.OtherRegionsTitle, nil)
 		choices, err = b.store.ListRootAreas(ctx)
 		filtered := choices[:0]
 		for _, choice := range choices {
@@ -271,7 +344,7 @@ func (b *Bot) openAreaGroup(ctx context.Context, userID int64, state *wizardStat
 	state.AreaKeys = nil
 	state.AreaLabels = nil
 	state.Stage = "areas"
-	b.editState(ctx, userID, state, renderAreaGroup(state), areaGroupKeyboard(state))
+	b.editState(ctx, userID, state, renderAreaGroup(localizer, state), areaGroupKeyboard(localizer, state))
 }
 
 func (b *Bot) toggleArea(ctx context.Context, userID int64, state *wizardState, key string) {
@@ -293,22 +366,24 @@ func (b *Bot) toggleArea(ctx context.Context, userID int64, state *wizardState, 
 		state.AreaKeys = append(state.AreaKeys, key)
 		state.AreaLabels = append(state.AreaLabels, label)
 	}
-	b.editState(ctx, userID, state, renderAreaGroup(state), areaGroupKeyboard(state))
+	localizer := b.catalog.For(state.LanguageTag)
+	b.editState(ctx, userID, state, renderAreaGroup(localizer, state), areaGroupKeyboard(localizer, state))
 }
 
-func renderAreaGroup(state *wizardState) string {
-	detail := "Choose the whole region or select one or more areas."
+func renderAreaGroup(localizer localization.Localizer, state *wizardState) string {
+	detail := localizer.Text(localization.AreaGroupDetail, nil)
 	if len(state.AreaKeys) > 0 {
-		detail = fmt.Sprintf("%d selected. Tap areas to toggle them, then press Done.", len(state.AreaKeys))
+		data := map[string]any{"Count": len(state.AreaKeys)}
+		detail = localizer.Plural(localization.AreaGroupSelectedDetail, len(state.AreaKeys), data)
 	}
-	title := "Choose areas in " + state.AreaParentLabel
+	title := localizer.Text(localization.AreasInTitle, map[string]any{"Area": state.AreaParentLabel})
 	if state.AreaGroup == "other" {
-		title = "Choose other regions"
+		title = localizer.Text(localization.OtherRegionsTitle, nil)
 	}
-	return wizardStep(3, title, detail)
+	return wizardStep(localizer, 3, title, detail)
 }
 
-func areaGroupKeyboard(state *wizardState) *keyboard {
+func areaGroupKeyboard(localizer localization.Localizer, state *wizardState) *keyboard {
 	keys := make([]string, 0, len(state.AreaChoices))
 	for key := range state.AreaChoices {
 		keys = append(keys, key)
@@ -320,7 +395,8 @@ func areaGroupKeyboard(state *wizardState) *keyboard {
 	}
 	rows := [][]inlineButton{}
 	if state.AreaParentKey != "" {
-		rows = append(rows, []inlineButton{button("All "+state.AreaParentLabel, "w1:aa")})
+		label := localizer.Text(localization.AllRegion, map[string]any{"Area": state.AreaParentLabel})
+		rows = append(rows, []inlineButton{button(label, "w1:aa")})
 	}
 	for i := 0; i < len(keys); i += 2 {
 		row := []inlineButton{}
@@ -333,60 +409,90 @@ func areaGroupKeyboard(state *wizardState) *keyboard {
 		}
 		rows = append(rows, row)
 	}
-	rows = append(rows, []inlineButton{button(fmt.Sprintf("Done · %d selected", len(state.AreaKeys)), "w1:ad")}, []inlineButton{button("Cancel", "w1:x")})
+	selectedData := map[string]any{"Count": len(state.AreaKeys)}
+	rows = append(rows,
+		[]inlineButton{button(localizer.Plural(localization.ButtonDoneSelected, len(state.AreaKeys), selectedData), "w1:ad")},
+		[]inlineButton{button(localizer.Text(localization.ButtonCancel, nil), "w1:x")},
+	)
 	return &keyboard{InlineKeyboard: rows}
 }
 
-func renderConfirmation(state *wizardState) string {
-	deal := "Rent"
-	if state.DealType == domain.DealSale {
-		deal = "Buy"
-	}
-	areas := "All Latvia"
+func renderConfirmation(localizer localization.Localizer, state *wizardState) string {
+	areas := localizer.Text(localization.ButtonAllLatvia, nil)
 	if len(state.AreaLabels) > 0 {
 		areas = strings.Join(state.AreaLabels, ", ")
 	}
-	return "<b>Review your alert</b>\n\n🏘 <b>Property:</b> " + propertyLabel(state.PropertyTypes) + "\n🔑 <b>Deal:</b> " + deal + "\n📍 <b>Area:</b> " + html.EscapeString(areas) + "\n💶 <b>Price:</b> " + formatIntRange(state.PriceMin, state.PriceMax, "€", "") + "\n🚪 <b>Rooms:</b> " + formatIntRange(state.RoomsMin, state.RoomsMax, "", "") + "\n📐 <b>Size:</b> " + formatFloatRange(state.AreaMin, state.AreaMax, "", " m²") + "\n\nOnly listings discovered after confirmation will be sent."
+	return localizer.Text(localization.ReviewAlert, map[string]any{
+		"Property": propertyLabel(localizer, state.PropertyTypes),
+		"Deal":     dealLabel(localizer, state.DealType),
+		"Area":     html.EscapeString(areas),
+		"Price":    formatIntRange(localizer, state.PriceMin, state.PriceMax, "€", ""),
+		"Rooms":    formatIntRange(localizer, state.RoomsMin, state.RoomsMax, "", ""),
+		"Size":     formatFloatRange(localizer, state.AreaMin, state.AreaMax, "", " m²"),
+	})
 }
 
-func filtersText(filters []domain.SavedFilter) string {
+func filtersText(localizer localization.Localizer, filters []domain.SavedFilter) string {
 	if len(filters) == 0 {
-		return "<b>No alerts yet</b>\n\nCreate one and I’ll watch new listings for you."
+		return localizer.Text(localization.NoAlerts, nil)
 	}
-	parts := []string{"<b>My alerts</b>\n<i>Use the buttons below to stop, restart, or delete an alert.</i>"}
+	parts := []string{localizer.Text(localization.MyAlertsHeader, nil)}
 	for _, f := range filters {
-		state, icon := "Active", "🟢"
+		state, icon := localizer.Text(localization.StatusActive, nil), "🟢"
 		if !f.Enabled {
-			state, icon = "Paused", "⏸"
+			state, icon = localizer.Text(localization.StatusPaused, nil), "⏸"
 		}
-		areas := "All Latvia"
+		areas := localizer.Text(localization.ButtonAllLatvia, nil)
 		if len(f.AreaLabels) > 0 {
 			areas = strings.Join(f.AreaLabels, ", ")
 		}
-		parts = append(parts, fmt.Sprintf("%s <b>Alert #%d</b> · <i>%s</i>\n<blockquote>🏘 <b>Property:</b> %s\n🔑 <b>Deal:</b> %s\n📍 <b>Area:</b> %s\n💶 <b>Price:</b> %s\n🚪 <b>Rooms:</b> %s\n📐 <b>Size:</b> %s</blockquote>", icon, f.ID, state, propertyLabel(f.PropertyTypes), map[domain.DealType]string{domain.DealRent: "Rent", domain.DealSale: "Buy"}[f.DealType], html.EscapeString(areas), formatIntRange(f.PriceMin, f.PriceMax, "€", ""), formatIntRange(f.RoomsMin, f.RoomsMax, "", ""), formatFloatRange(f.AreaMin, f.AreaMax, "", " m²")))
+		parts = append(parts, localizer.Text(localization.AlertSummary, map[string]any{
+			"Icon":     icon,
+			"ID":       f.ID,
+			"Status":   state,
+			"Property": propertyLabel(localizer, f.PropertyTypes),
+			"Deal":     dealLabel(localizer, f.DealType),
+			"Area":     html.EscapeString(areas),
+			"Price":    formatIntRange(localizer, f.PriceMin, f.PriceMax, "€", ""),
+			"Rooms":    formatIntRange(localizer, f.RoomsMin, f.RoomsMax, "", ""),
+			"Size":     formatFloatRange(localizer, f.AreaMin, f.AreaMax, "", " m²"),
+		}))
 	}
 	return strings.Join(parts, "\n\n")
 }
 
-func propertyLabel(types []domain.PropertyType) string {
+func propertyLabel(localizer localization.Localizer, types []domain.PropertyType) string {
 	if len(types) == 1 && types[0] == domain.PropertyApartment {
-		return "Apartments"
+		return localizer.Text(localization.PropertyApartments, nil)
 	}
 	if len(types) == 1 && types[0] == domain.PropertyHouse {
-		return "Houses"
+		return localizer.Text(localization.PropertyHouses, nil)
 	}
-	return "Apartments & houses"
+	return localizer.Text(localization.PropertyBoth, nil)
 }
 
-func formatIntRange(minimum, maximum *int, prefix, suffix string) string {
+func dealLabel(localizer localization.Localizer, deal domain.DealType) string {
+	if deal == domain.DealSale {
+		return localizer.Text(localization.DealBuy, nil)
+	}
+
+	return localizer.Text(localization.DealRent, nil)
+}
+
+func formatIntRange(localizer localization.Localizer, minimum, maximum *int, prefix, suffix string) string {
 	if minimum == nil && maximum == nil {
-		return "Any"
+		messageID := localization.ButtonAny
+		if prefix == "€" {
+			messageID = localization.ButtonAnyPrice
+		}
+		return localizer.Text(messageID, nil)
 	}
 	if minimum != nil && maximum != nil && *minimum == *maximum {
 		return prefix + groupInt(*minimum) + suffix
 	}
 	if minimum == nil {
-		return "Up to " + prefix + groupInt(*maximum) + suffix
+		value := prefix + groupInt(*maximum) + suffix
+		return localizer.Text(localization.RangeUpTo, map[string]any{"Value": value})
 	}
 	if maximum == nil {
 		return prefix + groupInt(*minimum) + "+" + suffix
@@ -394,15 +500,16 @@ func formatIntRange(minimum, maximum *int, prefix, suffix string) string {
 	return prefix + groupInt(*minimum) + "–" + prefix + groupInt(*maximum) + suffix
 }
 
-func formatFloatRange(minimum, maximum *float64, prefix, suffix string) string {
+func formatFloatRange(localizer localization.Localizer, minimum, maximum *float64, prefix, suffix string) string {
 	if minimum == nil && maximum == nil {
-		return "Any"
+		return localizer.Text(localization.ButtonAnySize, nil)
 	}
 	if minimum != nil && maximum != nil && *minimum == *maximum {
 		return prefix + formatFloat(*minimum) + suffix
 	}
 	if minimum == nil {
-		return "Up to " + prefix + formatFloat(*maximum) + suffix
+		value := prefix + formatFloat(*maximum) + suffix
+		return localizer.Text(localization.RangeUpTo, map[string]any{"Value": value})
 	}
 	if maximum == nil {
 		return prefix + formatFloat(*minimum) + "+" + suffix

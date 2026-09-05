@@ -1,0 +1,299 @@
+[Welcome]
+other = "🏠 <b>Уведомления о недвижимости в Латвии</b>\n\nСоздайте уведомление, и я пришлю подходящие объявления, как только они появятся."
+
+[Help]
+other = "<b>Команды</b>\n\n/new — создать уведомление\n/alerts — посмотреть уведомления\n/pause ID — приостановить уведомление\n/resume ID — возобновить уведомление\n/delete ID — удалить уведомление\n/language — изменить язык\n/cancel — отменить текущую настройку"
+
+[SetupCancelled]
+other = "Настройка отменена. Вы можете начать заново в любое время."
+
+[InvalidPriceRange]
+other = "⚠️ Используйте min-max, min- или -max. Для тысяч можно использовать k, например 100k-200k."
+
+[InvalidSizeRange]
+other = "⚠️ Используйте min-max, одно число, min- или -max."
+
+[LanguagePrompt]
+other = "<b>Выберите язык</b>"
+
+[LanguageChanged]
+other = "Язык изменён на русский."
+
+[LanguageEnglish]
+other = "English"
+
+[LanguageLatvian]
+other = "Latviešu"
+
+[LanguageRussian]
+other = "Русский"
+
+[ButtonCreateAlert]
+other = "Создать уведомление"
+
+[ButtonMyAlerts]
+other = "Мои уведомления"
+
+[ButtonChangeLanguage]
+other = "Изменить язык"
+
+[ButtonStopAlert]
+other = "Остановить #{{.ID}}"
+
+[ButtonRestartAlert]
+other = "Возобновить #{{.ID}}"
+
+[ButtonDeleteAlert]
+other = "Удалить #{{.ID}}"
+
+[ButtonCreateAnotherAlert]
+other = "Создать ещё одно уведомление"
+
+[ButtonDeletePermanently]
+other = "Удалить навсегда"
+
+[ButtonKeepAlert]
+other = "Оставить уведомление"
+
+[ButtonCancel]
+other = "Отмена"
+
+[ButtonBack]
+other = "Назад"
+
+[ButtonCustomRange]
+other = "Другой диапазон"
+
+[ButtonConfirmAlert]
+other = "Подтвердить уведомление"
+
+[ButtonDoneSelected]
+one = "Готово · выбрано: {{.Count}}"
+few = "Готово · выбрано: {{.Count}}"
+many = "Готово · выбрано: {{.Count}}"
+other = "Готово · выбрано: {{.Count}}"
+
+[InvalidAlert]
+other = "Некорректное уведомление."
+
+[AlertNotFound]
+other = "Уведомление не найдено."
+
+[AlertRestarted]
+other = "Уведомление возобновлено."
+
+[AlertStopped]
+other = "Уведомление остановлено."
+
+[AlertDeleted]
+other = "Уведомление удалено."
+
+[WizardExpired]
+other = "Срок этой настройки истёк. Используйте /new, чтобы начать заново."
+
+[ChooseAtLeastOneArea]
+other = "Выберите хотя бы один район."
+
+[DeleteAlertConfirm]
+other = "🗑 <b>Удалить уведомление #{{.ID}}?</b>\n\nУведомление будет удалено навсегда. Это действие нельзя отменить."
+
+[CustomPricePrompt]
+other = "<b>Другой диапазон цен</b>\n\nВведите минимальную и максимальную цену через дефис. Для тысяч можно использовать <code>k</code>.\n\n<b>Примеры</b>\n<code>300-700</code> — от €300 до €700\n<code>-700</code> — от €0 до €700\n<code>500-</code> или <code>500+</code> — от €500 без максимума\n<code>100000-200000</code> — от €100 000 до €200 000\n<code>100k-200k</code> — то же, что от €100 000 до €200 000\n<code>100k+</code> — от €100 000 без максимума\n\nОтправьте диапазон цен следующим сообщением."
+
+[CustomSizePrompt]
+other = "<b>Другой диапазон площади</b>\n\nПримеры: <code>40-80</code>, <code>50-</code>, <code>-70</code>\n\nОтправьте диапазон площади следующим сообщением."
+
+[AlertCreated]
+other = "✅ <b>Уведомление #{{.ID}} активно</b>\n\nЯ сообщу, когда появится новое подходящее объявление. Уже найденные объявления повторно отправлены не будут."
+
+[Usage]
+other = "Использование: <code>/{{.Command}} ID</code>"
+
+[AlertPaused]
+other = "Уведомление приостановлено."
+
+[AlertResumed]
+other = "Уведомление возобновлено. Объявления, найденные во время паузы, повторно отправлены не будут."
+
+[WizardStep]
+other = "<b>Новое уведомление · Шаг {{.Step}} из 6</b>\n\n<b>{{.Title}}</b>\n{{.Detail}}"
+
+[StepPropertyTitle]
+other = "Какой тип недвижимости?"
+
+[StepPropertyDetail]
+other = "Выберите квартиры, дома или оба варианта."
+
+[StepDealTitle]
+other = "Что вы ищете?"
+
+[StepDealDetail]
+other = "Выберите аренду или покупку."
+
+[StepAreaTitle]
+other = "Где искать?"
+
+[StepAreaDetail]
+other = "Выберите всю Латвию или откройте регион, чтобы указать точные районы."
+
+[StepRoomsTitle]
+other = "Сколько комнат?"
+
+[StepRoomsDetail]
+other = "Выберите минимальное количество комнат."
+
+[StepSizeTitle]
+other = "Минимальная площадь недвижимости?"
+
+[StepSizeDetail]
+other = "Выберите обычный минимум или введите свой диапазон."
+
+[StepPriceTitle]
+other = "Какой у вас бюджет?"
+
+[StepPriceRentDetail]
+other = "Выберите обычный диапазон месячной аренды или введите свой."
+
+[StepPriceSaleDetail]
+other = "Выберите обычный диапазон цены покупки или введите свой."
+
+[ButtonApartment]
+other = "Квартира"
+
+[ButtonHouse]
+other = "Дом"
+
+[ButtonApartmentOrHouse]
+other = "Квартира или дом"
+
+[ButtonRent]
+other = "Арендовать"
+
+[ButtonBuy]
+other = "Купить"
+
+[ButtonAllLatvia]
+other = "Вся Латвия"
+
+[ButtonRiga]
+other = "Рига"
+
+[ButtonJurmala]
+other = "Юрмала"
+
+[ButtonRigaRegion]
+other = "Рижский регион"
+
+[ButtonOtherRegions]
+other = "Другие"
+
+[ButtonAnyPrice]
+other = "Любая цена"
+
+[ButtonAny]
+other = "Любое количество"
+
+[ButtonAnySize]
+other = "Любая площадь"
+
+[AreaGroupDetail]
+other = "Выберите весь регион или один или несколько районов."
+
+[AreaGroupSelectedDetail]
+one = "Выбран {{.Count}} район. Нажимайте районы, чтобы переключать их, затем нажмите Готово."
+few = "Выбрано {{.Count}} района. Нажимайте районы, чтобы переключать их, затем нажмите Готово."
+many = "Выбрано {{.Count}} районов. Нажимайте районы, чтобы переключать их, затем нажмите Готово."
+other = "Выбрано {{.Count}} района. Нажимайте районы, чтобы переключать их, затем нажмите Готово."
+
+[AreasInTitle]
+other = "Выберите районы: {{.Area}}"
+
+[OtherRegionsTitle]
+other = "Выберите другие регионы"
+
+[AllRegion]
+other = "Весь регион: {{.Area}}"
+
+[ReviewAlert]
+other = "<b>Проверьте уведомление</b>\n\n🏘 <b>Недвижимость:</b> {{.Property}}\n🔑 <b>Сделка:</b> {{.Deal}}\n📍 <b>Место:</b> {{.Area}}\n💶 <b>Цена:</b> {{.Price}}\n🚪 <b>Комнаты:</b> {{.Rooms}}\n📐 <b>Площадь:</b> {{.Size}}\n\nБудут отправляться только объявления, найденные после подтверждения."
+
+[NoAlerts]
+other = "<b>Уведомлений пока нет</b>\n\nСоздайте уведомление, и я буду следить за новыми объявлениями."
+
+[MyAlertsHeader]
+other = "<b>Мои уведомления</b>\n<i>Используйте кнопки ниже, чтобы остановить, возобновить или удалить уведомление.</i>"
+
+[StatusActive]
+other = "Активно"
+
+[StatusPaused]
+other = "Приостановлено"
+
+[AlertSummary]
+other = "{{.Icon}} <b>Уведомление #{{.ID}}</b> · <i>{{.Status}}</i>\n<blockquote>🏘 <b>Недвижимость:</b> {{.Property}}\n🔑 <b>Сделка:</b> {{.Deal}}\n📍 <b>Место:</b> {{.Area}}\n💶 <b>Цена:</b> {{.Price}}\n🚪 <b>Комнаты:</b> {{.Rooms}}\n📐 <b>Площадь:</b> {{.Size}}</blockquote>"
+
+[PropertyApartments]
+other = "Квартиры"
+
+[PropertyHouses]
+other = "Дома"
+
+[PropertyBoth]
+other = "Квартиры и дома"
+
+[DealRent]
+other = "Аренда"
+
+[DealBuy]
+other = "Покупка"
+
+[RangeUpTo]
+other = "До {{.Value}}"
+
+[ListingApartment]
+other = "Квартира"
+
+[ListingHouse]
+other = "Дом"
+
+[ListingForRent]
+other = "в аренду"
+
+[ListingForSale]
+other = "на продажу"
+
+[ListingPriceOnRequest]
+other = "Цена по запросу"
+
+[ListingPerMonth]
+other = "{{.Price}} в месяц"
+
+[ListingRooms]
+one = "{{.Count}} комната"
+few = "{{.Count}} комнаты"
+many = "{{.Count}} комнат"
+other = "{{.Count}} комнаты"
+
+[ListingStreet]
+other = "🛣 <b>Улица:</b> {{.Value}}"
+
+[ListingFloor]
+other = "🏬 <b>Этаж:</b> {{.Value}}"
+
+[ListingSeries]
+other = "🏗 <b>Серия:</b> {{.Value}}"
+
+[ListingHouseType]
+other = "🏠 <b>Тип дома:</b> {{.Value}}"
+
+[ListingFloors]
+other = "🏗 <b>Этажей:</b> {{.Count}}"
+
+[ListingLandArea]
+other = "🌳 <b>Площадь участка:</b> {{.Value}} м²"
+
+[ListingHeading]
+other = "{{.Icon}} <b>{{.Property}} {{.Action}} · {{.Price}}</b>"
+
+[ListingViewOn]
+other = "<a href=\"{{.URL}}\">Открыть на {{.Source}} →</a>"
