@@ -10,7 +10,7 @@ import (
 
 type ListingStore interface {
 	IsSourceInitialized(context.Context, string) (bool, error)
-	UnseenKeys(context.Context, []domain.Listing) (map[domain.ListingKey]struct{}, error)
+	EnrichmentKeys(context.Context, []domain.Listing) (map[domain.ListingKey]struct{}, error)
 	ProcessDiscovered(context.Context, string, []domain.Listing, bool) (domain.DiscoveryResult, error)
 }
 
@@ -22,6 +22,7 @@ type OutboxStore interface {
 
 type ListingMatcherStore interface {
 	MatchListingEvent(context.Context, string, int64, time.Time) (int, error)
+	MatchPriceChangedEvent(context.Context, string, events.ListingPriceChanged, time.Time) (int, error)
 }
 
 type EventPublisher interface {

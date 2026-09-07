@@ -6,12 +6,22 @@ import (
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/events"
 	"github.com/jackc/pgx/v5"
 )
 
 const listingMatcherConsumer = "alert-matcher.v1"
 
 func (s *Store) MatchListingEvent(ctx context.Context, eventID string, listingID int64, occurredAt time.Time) (int, error) {
+	return s.matchEvent(ctx, eventID, listingID, occurredAt, domain.NotificationListingDiscovered, nil, nil, true)
+}
+
+func (s *Store) MatchPriceChangedEvent(ctx context.Context, eventID string, event events.ListingPriceChanged, occurredAt time.Time) (int, error) {
+	knownChange := event.PreviousPriceEUR != nil && event.CurrentPriceEUR != nil && *event.PreviousPriceEUR > 0 && *event.CurrentPriceEUR >= 0 && *event.CurrentPriceEUR != *event.PreviousPriceEUR
+	return s.matchEvent(ctx, eventID, event.ListingID, occurredAt, domain.NotificationPriceChanged, event.PreviousPriceEUR, event.CurrentPriceEUR, knownChange)
+}
+
+func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64, occurredAt time.Time, notificationType domain.NotificationType, previousPriceEUR, currentPriceEUR *int, eligible bool) (int, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -27,9 +37,18 @@ func (s *Store) MatchListingEvent(ctx context.Context, eventID string, listingID
 		}
 		return 0, nil
 	}
+	if !eligible {
+		if err := tx.Commit(ctx); err != nil {
+			return 0, err
+		}
+		return 0, nil
+	}
 	listing, err := loadListing(ctx, tx, listingID)
 	if err != nil {
 		return 0, err
+	}
+	if notificationType == domain.NotificationPriceChanged {
+		listing.PriceEUR = currentPriceEUR
 	}
 	filters, err := loadFilters(ctx, tx)
 	if err != nil {
@@ -43,7 +62,7 @@ func (s *Store) MatchListingEvent(ctx context.Context, eventID string, listingID
 		if !domain.Matches(listing, filter) {
 			continue
 		}
-		tag, err := tx.Exec(ctx, `INSERT INTO notifications(filter_id,listing_id,status,next_attempt_at) VALUES($1,$2,'pending',now()) ON CONFLICT(filter_id,listing_id) DO NOTHING`, filter.ID, listingID)
+		tag, err := tx.Exec(ctx, `INSERT INTO notifications(filter_id,listing_id,trigger_event_id,notification_type,previous_price_eur,current_price_eur,status,next_attempt_at) VALUES($1,$2,$3::uuid,$4,$5,$6,'pending',now()) ON CONFLICT(filter_id,trigger_event_id) DO NOTHING`, filter.ID, listingID, eventID, notificationType, previousPriceEUR, currentPriceEUR)
 		if err != nil {
 			return 0, err
 		}

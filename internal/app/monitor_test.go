@@ -20,7 +20,7 @@ func (f *fakeStore) IsSourceInitialized(context.Context, string) (bool, error) {
 	return f.initialized, nil
 }
 
-func (f *fakeStore) UnseenKeys(_ context.Context, l []domain.Listing) (map[domain.ListingKey]struct{}, error) {
+func (f *fakeStore) EnrichmentKeys(_ context.Context, l []domain.Listing) (map[domain.ListingKey]struct{}, error) {
 	r := map[domain.ListingKey]struct{}{}
 	for _, x := range l {
 		r[x.Key()] = struct{}{}

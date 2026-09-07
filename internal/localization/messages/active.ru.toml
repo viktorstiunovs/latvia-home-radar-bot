@@ -297,3 +297,15 @@ other = "{{.Icon}} <b>{{.Property}} {{.Action}} · {{.Price}}</b>"
 
 [ListingViewOn]
 other = "<a href=\"{{.URL}}\">Открыть на {{.Source}} →</a>"
+
+[ListingPriceChangeHeading]
+other = "💶 <b>Изменение цены</b>"
+
+[ListingPriceIncreasedHeading]
+other = "🔴 <b>Цена повышена · {{.Percentage}}</b>"
+
+[ListingPriceDecreasedHeading]
+other = "🟢 <b>Цена снижена · {{.Percentage}}</b>"
+
+[ListingPriceTransition]
+other = "<s>{{.Previous}}</s>  →  <b>{{.Current}}</b>"

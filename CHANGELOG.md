@@ -11,6 +11,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Added an administrator-only `/broadcast` command for messaging all registered
   users with isolated delivery failures and a completion summary.
+- Retained each listing's price observations and added localized, photo-rich
+  Telegram alerts for increases and decreases when the new price matches a
+  saved filter, using green/decrease and red/increase indicators, a
+  struck-through previous price, an emphasized current price, and the signed
+  percentage change.
 
 ### Changed
 

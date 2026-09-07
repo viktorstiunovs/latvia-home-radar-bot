@@ -11,6 +11,33 @@ import (
 )
 
 func FormatListing(localizer localization.Localizer, l domain.Listing) string {
+	return formatListing(localizer, l, "")
+}
+
+func FormatPriceChange(localizer localization.Localizer, l domain.Listing, previousPriceEUR, currentPriceEUR *int) string {
+	l.PriceEUR = currentPriceEUR
+	previous := formatListingPrice(localizer, l.DealType, previousPriceEUR)
+	current := formatListingPrice(localizer, l.DealType, currentPriceEUR)
+	priceChange := localizer.Text(localization.ListingPriceChangeHeading, nil) + "\n<blockquote>" +
+		localizer.Text(localization.ListingPriceTransition, map[string]any{"Previous": previous, "Current": current})
+	if previousPriceEUR != nil && currentPriceEUR != nil && *previousPriceEUR > 0 && *currentPriceEUR >= 0 && *currentPriceEUR != *previousPriceEUR {
+		percentage := float64(*currentPriceEUR-*previousPriceEUR) * 100 / float64(*previousPriceEUR)
+		sign := "+"
+		heading := localization.ListingPriceIncreasedHeading
+		if percentage < 0 {
+			sign = "−"
+			percentage = -percentage
+			heading = localization.ListingPriceDecreasedHeading
+		}
+		formatted := strings.TrimRight(strings.TrimRight(strconv.FormatFloat(percentage, 'f', 1, 64), "0"), ".")
+		priceChange = localizer.Text(heading, map[string]any{"Percentage": sign + formatted + "%"}) + "\n<blockquote>" +
+			localizer.Text(localization.ListingPriceTransition, map[string]any{"Previous": previous, "Current": current})
+	}
+	priceChange += "</blockquote>"
+	return formatListing(localizer, l, priceChange)
+}
+
+func formatListing(localizer localization.Localizer, l domain.Listing, priceChange string) string {
 	property, icon := localizer.Text(localization.ListingApartment, nil), "🏢"
 	if l.PropertyType == domain.PropertyHouse {
 		property, icon = localizer.Text(localization.ListingHouse, nil), "🏡"
@@ -19,13 +46,7 @@ func FormatListing(localizer localization.Localizer, l domain.Listing) string {
 	if l.DealType == domain.DealSale {
 		action = localizer.Text(localization.ListingForSale, nil)
 	}
-	price := localizer.Text(localization.ListingPriceOnRequest, nil)
-	if l.PriceEUR != nil {
-		price = "€" + groupInt(*l.PriceEUR)
-		if l.DealType == domain.DealRent {
-			price = localizer.Text(localization.ListingPerMonth, map[string]any{"Price": price})
-		}
-	}
+	price := formatListingPrice(localizer, l.DealType, l.PriceEUR)
 	details := []string{}
 	location := ""
 	if l.PropertyType == domain.PropertyHouse && l.City != "" {
@@ -83,7 +104,7 @@ func FormatListing(localizer localization.Localizer, l domain.Listing) string {
 	source := providerName(l.Source)
 	heading := localizer.Text(localization.ListingHeading, map[string]any{"Icon": icon, "Property": property, "Action": action, "Price": price})
 	link := localizer.Text(localization.ListingViewOn, map[string]any{"URL": html.EscapeString(l.URL), "Source": html.EscapeString(source)})
-	sections := []string{heading, strings.Join(details, "\n"), "<i>" + html.EscapeString(string(title)) + "</i>", link}
+	sections := []string{heading, priceChange, strings.Join(details, "\n"), "<i>" + html.EscapeString(string(title)) + "</i>", link}
 	var nonempty []string
 	for _, section := range sections {
 		if section != "" && section != "<i></i>" {
@@ -91,6 +112,17 @@ func FormatListing(localizer localization.Localizer, l domain.Listing) string {
 		}
 	}
 	return strings.Join(nonempty, "\n\n")
+}
+
+func formatListingPrice(localizer localization.Localizer, deal domain.DealType, priceEUR *int) string {
+	if priceEUR == nil {
+		return localizer.Text(localization.ListingPriceOnRequest, nil)
+	}
+	price := "€" + groupInt(*priceEUR)
+	if deal == domain.DealRent {
+		return localizer.Text(localization.ListingPerMonth, map[string]any{"Price": price})
+	}
+	return price
 }
 
 func providerName(source string) string {

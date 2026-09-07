@@ -119,6 +119,13 @@ const (
 	ListingViewOn            MessageID = "ListingViewOn"
 )
 
+const (
+	ListingPriceChangeHeading    MessageID = "ListingPriceChangeHeading"
+	ListingPriceIncreasedHeading MessageID = "ListingPriceIncreasedHeading"
+	ListingPriceDecreasedHeading MessageID = "ListingPriceDecreasedHeading"
+	ListingPriceTransition       MessageID = "ListingPriceTransition"
+)
+
 var messageIDs = []MessageID{
 	Welcome, Help, SetupCancelled, InvalidPriceRange, InvalidSizeRange, LanguagePrompt, LanguageChanged,
 	LanguageEnglish, LanguageLatvian, LanguageRussian, ButtonCreateAlert, ButtonMyAlerts, ButtonChangeLanguage,
@@ -135,6 +142,7 @@ var messageIDs = []MessageID{
 	PropertyHouses, PropertyBoth, DealRent, DealBuy, RangeUpTo, ListingApartment, ListingHouse,
 	ListingForRent, ListingForSale, ListingPriceOnRequest, ListingPerMonth, ListingRooms, ListingStreet,
 	ListingFloor, ListingSeries, ListingHouseType, ListingFloors, ListingLandArea, ListingHeading, ListingViewOn,
+	ListingPriceChangeHeading, ListingPriceIncreasedHeading, ListingPriceDecreasedHeading, ListingPriceTransition,
 }
 
 var supportedLanguages = []string{English, Latvian, Russian}
@@ -277,23 +285,26 @@ func (c *Catalog) validateEnglish() error {
 
 func catalogValidationData() map[string]any {
 	return map[string]any{
-		"Action":   "action",
-		"Area":     "area",
-		"Command":  "command",
-		"Count":    2,
-		"Deal":     "deal",
-		"Detail":   "detail",
-		"Icon":     "icon",
-		"ID":       1,
-		"Price":    "price",
-		"Property": "property",
-		"Rooms":    "rooms",
-		"Size":     "size",
-		"Source":   "source",
-		"Status":   "status",
-		"Step":     1,
-		"Title":    "title",
-		"URL":      "https://example.test",
-		"Value":    "value",
+		"Action":     "action",
+		"Area":       "area",
+		"Command":    "command",
+		"Count":      2,
+		"Deal":       "deal",
+		"Detail":     "detail",
+		"Icon":       "icon",
+		"ID":         1,
+		"Price":      "price",
+		"Previous":   "previous",
+		"Current":    "current",
+		"Percentage": "percentage",
+		"Property":   "property",
+		"Rooms":      "rooms",
+		"Size":       "size",
+		"Source":     "source",
+		"Status":     "status",
+		"Step":       1,
+		"Title":      "title",
+		"URL":        "https://example.test",
+		"Value":      "value",
 	}
 }

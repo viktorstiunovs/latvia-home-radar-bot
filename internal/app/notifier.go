@@ -103,6 +103,9 @@ func (n *Notifier) deliver(ctx context.Context, item domain.PendingNotification)
 }
 
 func (n *Notifier) caption(item domain.PendingNotification) string {
+	if item.Type == domain.NotificationPriceChanged {
+		return telegram.FormatPriceChange(n.catalog.For(item.LanguageTag), item.Listing, item.PreviousPriceEUR, item.CurrentPriceEUR)
+	}
 	return telegram.FormatListing(n.catalog.For(item.LanguageTag), item.Listing)
 }
 

@@ -100,6 +100,9 @@ func (b *Broker) declareTopology() error {
 	if err := b.consumer.QueueBind(matcherQueue, events.ListingDiscoveredV1, eventsExchange, false, nil); err != nil {
 		return fmt.Errorf("bind matcher queue: %w", err)
 	}
+	if err := b.consumer.QueueBind(matcherQueue, events.ListingPriceChangedV1, eventsExchange, false, nil); err != nil {
+		return fmt.Errorf("bind price-change events: %w", err)
+	}
 	if err := b.consumer.Qos(10, 0, false); err != nil {
 		return fmt.Errorf("set consumer prefetch: %w", err)
 	}

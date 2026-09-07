@@ -23,16 +23,36 @@ func (m *ListingMatcher) Run(ctx context.Context) error {
 }
 
 func (m *ListingMatcher) handle(ctx context.Context, event events.Envelope) error {
-	data, err := events.DecodeListingDiscovered(event)
+	listingID, created, err := m.match(ctx, event)
 	if err != nil {
-		m.logger.Error("event rejected", "event", event.Type, "event_id", event.ID, "error", err)
-		return events.Permanent(err)
+		if events.IsPermanent(err) {
+			m.logger.Error("event rejected", "event", event.Type, "event_id", event.ID, "error", err)
+			return err
+		}
+		m.logger.Warn("listing event processing failed", "event", event.Type, "event_id", event.ID, "listing_id", listingID, "error", err)
+		return fmt.Errorf("match listing %d: %w", listingID, err)
 	}
-	created, err := m.store.MatchListingEvent(ctx, event.ID, data.ListingID, event.OccurredAt)
-	if err != nil {
-		m.logger.Warn("listing event processing failed", "event", event.Type, "event_id", event.ID, "listing_id", data.ListingID, "error", err)
-		return fmt.Errorf("match listing %d: %w", data.ListingID, err)
-	}
-	m.logger.Info("listing event matched", "event", event.Type, "event_id", event.ID, "listing_id", data.ListingID, "notifications", created)
+	m.logger.Info("listing event matched", "event", event.Type, "event_id", event.ID, "listing_id", listingID, "notifications", created)
 	return nil
+}
+
+func (m *ListingMatcher) match(ctx context.Context, event events.Envelope) (int64, int, error) {
+	switch event.Type {
+	case events.ListingDiscoveredV1:
+		data, err := events.DecodeListingDiscovered(event)
+		if err != nil {
+			return 0, 0, events.Permanent(err)
+		}
+		created, err := m.store.MatchListingEvent(ctx, event.ID, data.ListingID, event.OccurredAt)
+		return data.ListingID, created, err
+	case events.ListingPriceChangedV1:
+		data, err := events.DecodeListingPriceChanged(event)
+		if err != nil {
+			return 0, 0, events.Permanent(err)
+		}
+		created, err := m.store.MatchPriceChangedEvent(ctx, event.ID, data, event.OccurredAt)
+		return data.ListingID, created, err
+	default:
+		return 0, 0, events.Permanent(fmt.Errorf("unexpected event type %q", event.Type))
+	}
 }

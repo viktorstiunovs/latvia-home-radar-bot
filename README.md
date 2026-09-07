@@ -7,6 +7,8 @@ A self-hosted Go Telegram bot that watches SS.lv and City24.lv for new Latvian a
 - Apartments and houses for rent or sale across Latvia.
 - SS.lv RSS/detail parsing and City24 JSON API discovery/enrichment.
 - Price, rooms, size, and hierarchical canonical-area filters.
+- Durable listing price history and rich alerts when a property's changed price
+  matches a saved filter.
 - First-poll baselines so deployment does not flood users with old listings.
 - Telegram media albums of up to ten photos and reusable Telegram file IDs.
 - English, Latvian, and Russian bot interfaces with a persisted language choice.
@@ -90,6 +92,24 @@ chat rejects the message, and the administrator receives successful and failed
 delivery counts when the broadcast finishes. The command is intentionally
 omitted from the public command list and ignored when invoked by any other user.
 
+## Price history and alerts
+
+Every listing's initial price observation is stored, including listings from a
+source's silent first-poll baseline. Later observations are appended only when
+the value changes, and the listing row always reflects the latest observation.
+Known-to-unknown and unknown-to-known transitions are retained as history but
+do not send alerts because a meaningful percentage cannot be calculated.
+
+Every known-to-known increase or decrease is matched against each active saved
+filter using the new price. A listing can therefore alert a user when a price
+change first moves it into their configured range; filters that do not match the
+new price remain silent. The notification uses a green indicator for a decrease
+or a red indicator for an increase, strikes through the previous price,
+emphasizes the current price, and shows the signed percentage change. It retains
+those triggering values even if a newer change arrives before a retry. It uses
+the persisted listing details and photos, including reusable Telegram file IDs;
+delivery never fetches the provider page again.
+
 ## Localization
 
 User-facing Telegram text lives in the embedded TOML catalogs under
@@ -120,6 +140,12 @@ migration after it may have been applied.
 
 Migrations are embedded into the binary and run at startup. The baseline migration uses idempotent creation and `ADD COLUMN IF NOT EXISTS`, so it can safely adopt the schema produced by the Python application's migrations as well as initialize a fresh database.
 
+The price-history migrations backfill one initial observation from every
+existing listing's current price and first-seen timestamp and enable
+bidirectional price-change notifications. Stop all older application instances
+before applying them: the notification uniqueness model changes from one row
+per filter/listing to one row per filter/triggering event.
+
 Before cutover:
 
 1. Back up PostgreSQL with `pg_dump`.
@@ -133,4 +159,4 @@ Active filters, source baselines, listings, pending notifications, and cached Te
 
 `cmd/bot` is the composition root. Pure types and matching rules live in `internal/domain`; versioned event contracts in `internal/events`; source adapters in `internal/provider`; application orchestration in `internal/app`; PostgreSQL in `internal/store/postgres`; RabbitMQ in `internal/broker/rabbitmq`; and all Telegram-specific behavior in `internal/telegram`.
 
-The providers normalize API/RSS/detail payloads before crossing their package boundary. Discovery stores each listing together with a `listing.discovered.v1` outbox event in one transaction. The outbox relay publishes it to RabbitMQ, and the idempotent alert matcher consumes it and creates notification rows. The existing notifier then delivers those rows through Telegram. Notifications only use persisted listing details and media URLs—they never reopen a provider detail page.
+The providers normalize API/RSS/detail payloads before crossing their package boundary. Discovery stores each new listing together with a `listing.discovered.v1` outbox event in one transaction. Distinct later price observations use the separate `listing.price_changed.v1` contract, with the history row, current listing price, and outbox event committed atomically. The outbox relay publishes both event types to RabbitMQ, and the idempotent alert matcher creates event-scoped notification rows. The notifier then delivers those rows through Telegram. Notifications only use persisted listing details, media URLs, and triggering price snapshots—they never reopen a provider detail page.

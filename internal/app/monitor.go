@@ -54,7 +54,7 @@ func (m *Monitor) Poll(ctx context.Context, source provider.Source) error {
 	}
 	parsed := len(listings)
 	if initialized {
-		needed, err := m.store.UnseenKeys(ctx, listings)
+		needed, err := m.store.EnrichmentKeys(ctx, listings)
 		if err != nil {
 			return err
 		}

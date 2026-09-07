@@ -294,3 +294,15 @@ other = "{{.Icon}} <b>{{.Property}} {{.Action}} · {{.Price}}</b>"
 
 [ListingViewOn]
 other = "<a href=\"{{.URL}}\">Skatīt vietnē {{.Source}} →</a>"
+
+[ListingPriceChangeHeading]
+other = "💶 <b>Cenas izmaiņas</b>"
+
+[ListingPriceIncreasedHeading]
+other = "🔴 <b>Cena paaugstināta · {{.Percentage}}</b>"
+
+[ListingPriceDecreasedHeading]
+other = "🟢 <b>Cena samazināta · {{.Percentage}}</b>"
+
+[ListingPriceTransition]
+other = "<s>{{.Previous}}</s>  →  <b>{{.Current}}</b>"

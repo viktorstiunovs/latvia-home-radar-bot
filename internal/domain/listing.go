@@ -97,16 +97,26 @@ type SavedFilter struct {
 }
 
 type PendingNotification struct {
-	ID             int64
-	TelegramUserID int64
-	UserName       string
-	ChatID         int64
-	LanguageTag    string
-	FilterID       int64
-	ListingID      int64
-	Listing        Listing
-	Attempts       int
+	ID               int64
+	TelegramUserID   int64
+	UserName         string
+	ChatID           int64
+	LanguageTag      string
+	FilterID         int64
+	ListingID        int64
+	Listing          Listing
+	Attempts         int
+	Type             NotificationType
+	PreviousPriceEUR *int
+	CurrentPriceEUR  *int
 }
+
+type NotificationType string
+
+const (
+	NotificationListingDiscovered NotificationType = "listing_discovered"
+	NotificationPriceChanged      NotificationType = "price_changed"
+)
 
 type DiscoveryResult struct {
 	Inserted int
