@@ -89,14 +89,8 @@ func (s *Store) MatchDuplicateAwareListingEvent(ctx context.Context, eventID str
 		return 0, err
 	}
 	created := 0
-	for _, filter := range filters {
-		if filter.ActivatedAt != nil && !filter.ActivatedAt.Before(occurredAt) {
-			continue
-		}
-		if !domain.Matches(listing, filter) {
-			continue
-		}
-		alreadyNotified, err := propertyWasNotified(ctx, tx, propertyID, filter.ID)
+	for _, filter := range matchingFiltersByUser(filters, listing, occurredAt) {
+		alreadyNotified, err := propertyWasNotified(ctx, tx, propertyID, filter.UserID)
 		if err != nil {
 			return 0, err
 		}
@@ -154,8 +148,8 @@ func propertyOffersAt(ctx context.Context, tx pgx.Tx, propertyID, excludeListing
 	return result, rows.Err()
 }
 
-func propertyWasNotified(ctx context.Context, tx pgx.Tx, propertyID, filterID int64) (bool, error) {
+func propertyWasNotified(ctx context.Context, tx pgx.Tx, propertyID, userID int64) (bool, error) {
 	var result bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM notifications n JOIN property_listing_memberships m ON m.listing_id=n.listing_id AND m.valid_to IS NULL WHERE n.filter_id=$1 AND m.property_id=$2)`, filterID, propertyID).Scan(&result)
+	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM notifications n JOIN filters f ON f.id=n.filter_id JOIN property_listing_memberships m ON m.listing_id=n.listing_id AND m.valid_to IS NULL WHERE f.user_id=$1 AND m.property_id=$2)`, userID, propertyID).Scan(&result)
 	return result, err
 }

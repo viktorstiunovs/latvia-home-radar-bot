@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Coalesced overlapping saved-filter matches so each user receives at most one
+  alert per listing event while separate users remain independently notified.
+
 ## [1.0.0] - 2026-09-09
 
 ### Added

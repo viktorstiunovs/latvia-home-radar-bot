@@ -307,7 +307,7 @@ func TestPriceHistoryAndPriceChangeNotifications(t *testing.T) {
 		t.Fatal(err)
 	}
 	created, err = store.MatchPriceChangedEvent(ctx, firstDrop.ID, firstDropData, firstDrop.OccurredAt)
-	if err != nil || created != 2 {
+	if err != nil || created != 1 {
 		t.Fatalf("filter-boundary price decrease: created=%d err=%v", created, err)
 	}
 	created, err = store.MatchPriceChangedEvent(ctx, firstDrop.ID, firstDropData, firstDrop.OccurredAt)
@@ -325,7 +325,7 @@ func TestPriceHistoryAndPriceChangeNotifications(t *testing.T) {
 		t.Fatal(err)
 	}
 	created, err = store.MatchPriceChangedEvent(ctx, secondDrop.ID, secondDropData, secondDrop.OccurredAt)
-	if err != nil || created != 2 {
+	if err != nil || created != 1 {
 		t.Fatalf("second price decrease: created=%d err=%v", created, err)
 	}
 
@@ -339,7 +339,7 @@ func TestPriceHistoryAndPriceChangeNotifications(t *testing.T) {
 		t.Fatal(err)
 	}
 	created, err = store.MatchPriceChangedEvent(ctx, inRangeIncrease.ID, inRangeIncreaseData, inRangeIncrease.OccurredAt)
-	if err != nil || created != 2 {
+	if err != nil || created != 1 {
 		t.Fatalf("in-range price increase: created=%d err=%v", created, err)
 	}
 
@@ -348,13 +348,12 @@ func TestPriceHistoryAndPriceChangeNotifications(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pending) != 6 {
-		t.Fatalf("expected six event-scoped notifications, got %+v", pending)
+	if len(pending) != 3 {
+		t.Fatalf("expected three user-coalesced event notifications, got %+v", pending)
 	}
-	wantedFilters := map[int64]bool{filterID: true, secondFilterID: true}
 	firstDecreaseNotifications, secondDecreaseNotifications, increaseNotifications := 0, 0, 0
 	for _, item := range pending {
-		if !wantedFilters[item.FilterID] || item.Type != domain.NotificationPriceChanged {
+		if item.FilterID != filterID || item.Type != domain.NotificationPriceChanged {
 			t.Fatalf("unexpected notification: %+v", item)
 		}
 		if !item.Listing.DetailsEnriched || len(item.Listing.PhotoURLs) != 1 || item.Listing.PhotoURLs[0] != "https://example.test/photo.jpg" {
@@ -371,8 +370,11 @@ func TestPriceHistoryAndPriceChangeNotifications(t *testing.T) {
 			t.Fatalf("notification lost triggering snapshot: %+v", item)
 		}
 	}
-	if firstDecreaseNotifications != 2 || secondDecreaseNotifications != 2 || increaseNotifications != 2 {
-		t.Fatalf("notifications per price event = %d/%d/%d, want 2/2/2", firstDecreaseNotifications, secondDecreaseNotifications, increaseNotifications)
+	if firstDecreaseNotifications != 1 || secondDecreaseNotifications != 1 || increaseNotifications != 1 {
+		t.Fatalf("notifications per price event = %d/%d/%d, want 1/1/1", firstDecreaseNotifications, secondDecreaseNotifications, increaseNotifications)
+	}
+	if secondFilterID == filterID {
+		t.Fatal("overlapping test filters unexpectedly share an ID")
 	}
 }
 
@@ -785,6 +787,14 @@ func TestDuplicateAwareNotificationsClassifyPropertyOffersAndRetainEventContext(
 	if err != nil {
 		t.Fatal(err)
 	}
+	secondUser, err := store.UpsertUser(ctx, 89, 89, "Second duplicate tester", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondUserFilter, err := store.CreateFilter(ctx, domain.SearchFilter{UserID: secondUser.ID, DealType: domain.DealSale, PropertyTypes: []domain.PropertyType{domain.PropertyApartment}, PriceMax: intPointer(200000), Enabled: true, ActivatedAt: &activated})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	base := domain.Listing{Source: "ss.lv", ExternalID: "property-a", URL: "https://www.ss.lv/msg/property-a.html", DealType: domain.DealSale, PropertyType: domain.PropertyApartment, Title: "Original home", PriceEUR: intPointer(100000), Address: "Brīvības iela 48", AreaKey: "lv/riga/centrs", Rooms: intPointer(2), AreaM2: floatPointer(54), Floor: intPointer(3), TotalFloors: intPointer(5), PhotoURLs: []string{"https://i.ss.lv/property-a.jpg"}}
 	firstID, firstEvent := discoverIntegrationListing(t, store, base)
@@ -796,8 +806,29 @@ func TestDuplicateAwareNotificationsClassifyPropertyOffersAndRetainEventContext(
 		t.Fatalf("unresolved event was consumed: count=%d err=%v", consumed, err)
 	}
 	firstProperty := resolveDiscoveredListing(t, store, firstID, strings.Repeat("1", 64), strings.Repeat("a", 64), "0000000000000000")
-	if created, err := store.MatchDuplicateAwareListingEvent(ctx, firstEvent.ID, firstID, firstEvent.OccurredAt); err != nil || created != 1 {
+	if created, err := store.MatchDuplicateAwareListingEvent(ctx, firstEvent.ID, firstID, firstEvent.OccurredAt); err != nil || created != 2 {
 		t.Fatalf("first property match created=%d err=%v", created, err)
+	}
+	var firstUserFilterID int64
+	if err := store.pool.QueryRow(ctx, `SELECT n.filter_id FROM notifications n JOIN filters f ON f.id=n.filter_id WHERE n.trigger_event_id=$1::uuid AND f.user_id=$2`, firstEvent.ID, user.ID).Scan(&firstUserFilterID); err != nil {
+		t.Fatal(err)
+	}
+	if firstUserFilterID != broadFilter {
+		t.Fatalf("first user's selected filter=%d want broad filter %d", firstUserFilterID, broadFilter)
+	}
+	propertyTx, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstUserWasNotified, err := propertyWasNotified(ctx, propertyTx, firstProperty, user.ID)
+	if rollbackErr := propertyTx.Rollback(ctx); err == nil && rollbackErr != nil {
+		err = rollbackErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !firstUserWasNotified {
+		t.Fatal("first user's property history was not found through the matching broad filter")
 	}
 	if created, err := store.MatchDuplicateAwareListingEvent(ctx, firstEvent.ID, firstID, firstEvent.OccurredAt); err != nil || created != 0 {
 		t.Fatalf("reprocessed first event created=%d err=%v", created, err)
@@ -833,10 +864,10 @@ func TestDuplicateAwareNotificationsClassifyPropertyOffersAndRetainEventContext(
 	if thirdProperty != firstProperty {
 		t.Fatalf("higher relist property=%d, want %d", thirdProperty, firstProperty)
 	}
-	if created, err := store.MatchDuplicateAwareListingEvent(ctx, thirdEvent.ID, thirdID, thirdEvent.OccurredAt); err != nil || created != 1 {
+	if created, err := store.MatchDuplicateAwareListingEvent(ctx, thirdEvent.ID, thirdID, thirdEvent.OccurredAt); err != nil || created != 2 {
 		t.Fatalf("higher relist created=%d err=%v", created, err)
 	}
-	assertNotificationRows(t, store, thirdID, domain.NotificationRelistingChanged, 1, 90000, 110000)
+	assertNotificationRows(t, store, thirdID, domain.NotificationRelistingChanged, 2, 90000, 110000)
 
 	cheaper := base
 	cheaper.Source = "city24.lv"
@@ -909,7 +940,7 @@ func TestDuplicateAwareNotificationsClassifyPropertyOffersAndRetainEventContext(
 	legacy.PhotoURLs = []string{"https://static.img-city24.lv/property-rollout-off.jpg"}
 	legacyID, legacyEvent := discoverIntegrationListing(t, store, legacy)
 	resolveDiscoveredListing(t, store, legacyID, strings.Repeat("7", 64), strings.Repeat("a", 64), "0000000000000000")
-	if created, err := store.MatchListingEvent(ctx, legacyEvent.ID, legacyID, legacyEvent.OccurredAt); err != nil || created != 1 {
+	if created, err := store.MatchListingEvent(ctx, legacyEvent.ID, legacyID, legacyEvent.OccurredAt); err != nil || created != 2 {
 		t.Fatalf("rollout-disabled legacy path created=%d err=%v", created, err)
 	}
 
@@ -948,6 +979,12 @@ func TestDuplicateAwareNotificationsClassifyPropertyOffersAndRetainEventContext(
 	}
 	if broadFilter == valueFilter {
 		t.Fatal("test filters unexpectedly share an ID")
+	}
+	if secondUserFilter == broadFilter || secondUserFilter == valueFilter {
+		t.Fatal("second user's filter unexpectedly shares an ID")
+	}
+	for _, eventID := range []string{firstEvent.ID, secondEvent.ID, thirdEvent.ID, fourthEvent.ID, ambiguousEvent.ID, legacyEvent.ID, priceEvent.ID} {
+		assertNotificationUsers(t, store, eventID, user.ID, secondUser.ID)
 	}
 }
 
@@ -1259,6 +1296,37 @@ func assertNotificationRows(t *testing.T, store *Store, listingID int64, notific
 	}
 	if count != wantCount {
 		t.Fatalf("notifications for listing=%d type=%s count=%d want=%d", listingID, notificationType, count, wantCount)
+	}
+}
+
+func assertNotificationUsers(t *testing.T, store *Store, eventID string, wantUserIDs ...int64) {
+	t.Helper()
+	ctx := context.Background()
+	rows, err := store.pool.Query(ctx, `SELECT f.user_id,count(*) FROM notifications n JOIN filters f ON f.id=n.filter_id WHERE n.trigger_event_id=$1::uuid GROUP BY f.user_id`, eventID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	actual := make(map[int64]int)
+	for rows.Next() {
+		var userID int64
+		var count int
+		if err := rows.Scan(&userID, &count); err != nil {
+			t.Fatal(err)
+		}
+		actual[userID] = count
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(actual) != len(wantUserIDs) {
+		t.Fatalf("notification users for event %s = %v, want %v", eventID, actual, wantUserIDs)
+	}
+	for _, userID := range wantUserIDs {
+		if actual[userID] != 1 {
+			t.Fatalf("notifications for event %s user %d = %d, want 1", eventID, userID, actual[userID])
+		}
 	}
 }
 

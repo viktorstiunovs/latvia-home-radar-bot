@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
@@ -58,13 +59,7 @@ func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64,
 		return 0, err
 	}
 	created := 0
-	for _, filter := range filters {
-		if filter.ActivatedAt != nil && !filter.ActivatedAt.Before(occurredAt) {
-			continue
-		}
-		if !domain.Matches(listing, filter) {
-			continue
-		}
+	for _, filter := range matchingFiltersByUser(filters, listing, occurredAt) {
 		tag, err := tx.Exec(ctx, `INSERT INTO notifications(filter_id,listing_id,trigger_event_id,notification_type,previous_price_eur,current_price_eur,listing_snapshot,status,next_attempt_at) VALUES($1,$2,$3::uuid,$4,$5,$6,$7,'pending',now()) ON CONFLICT(filter_id,trigger_event_id) DO NOTHING`, filter.ID, listingID, eventID, notificationType, previousPriceEUR, currentPriceEUR, listingJSON)
 		if err != nil {
 			return 0, err
@@ -75,6 +70,34 @@ func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64,
 		return 0, err
 	}
 	return created, nil
+}
+
+func matchingFiltersByUser(filters []domain.SearchFilter, listing domain.Listing, occurredAt time.Time) []domain.SearchFilter {
+	selected := make(map[int64]domain.SearchFilter)
+	for _, filter := range filters {
+		if filter.ActivatedAt != nil && !filter.ActivatedAt.Before(occurredAt) {
+			continue
+		}
+		if !domain.Matches(listing, filter) {
+			continue
+		}
+		current, exists := selected[filter.UserID]
+		if !exists || filter.ID < current.ID {
+			selected[filter.UserID] = filter
+		}
+	}
+
+	result := make([]domain.SearchFilter, 0, len(selected))
+	for _, filter := range selected {
+		result = append(result, filter)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].UserID == result[right].UserID {
+			return result[left].ID < result[right].ID
+		}
+		return result[left].UserID < result[right].UserID
+	})
+	return result
 }
 
 func loadListing(ctx context.Context, tx queryRower, listingID int64) (domain.Listing, error) {

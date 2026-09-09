@@ -227,10 +227,11 @@ is left unconsumed and retried. This prevents a fast RabbitMQ delivery from
 racing ahead of the background evidence workers.
 
 Each saved filter is evaluated against the new advert's initial event-time
-price and persisted listing snapshot. A confident match is then handled as one
-of four cases:
+price and persisted listing snapshot. When several filters owned by one user
+match the same event, they are coalesced into one alert; different users remain
+independent. A confident match is then handled as one of four cases:
 
-- The filter has not seen the property: send the normal full listing, with
+- The user has not seen the property: send the normal full listing, with
   links and prices for other confirmed-active offers.
 - The previous adverts are confirmed inactive and the last known price differs:
   send the approved full price-change design for a relisting, in either
@@ -253,9 +254,10 @@ availability is not presented as active.
 Notification rows retain the exact advert snapshot, triggering prices,
 availability state, comparison listing, and alternative links used when they
 were queued, so retries do not drift to later prices. Creation remains
-idempotent by integration event and filter. `DEDUPLICATION_ENABLED` controls the
-whole pipeline; disabling it restores legacy per-advert discovery alerts
-without changing or deleting identity, lifecycle, or price evidence.
+idempotent by integration event, with matching filters coalesced per user.
+`DEDUPLICATION_ENABLED` controls the whole pipeline; disabling it restores
+legacy per-advert discovery alerts without changing or deleting identity,
+lifecycle, or price evidence.
 
 ## Localization
 
@@ -317,4 +319,4 @@ Active filters, source baselines, listings, pending notifications, and cached Te
 
 `cmd/bot` is the composition root. Pure types and matching rules live in `internal/domain`; versioned event contracts in `internal/events`; source adapters in `internal/provider`; application orchestration in `internal/app`; PostgreSQL in `internal/store/postgres`; RabbitMQ in `internal/broker/rabbitmq`; and all Telegram-specific behavior in `internal/telegram`.
 
-The providers normalize API/RSS/detail payloads before crossing their package boundary. Discovery stores each new listing together with a `listing.discovered.v1` outbox event in one transaction. Distinct later price observations use the separate `listing.price_changed.v1` contract, with the history row, current listing price, and outbox event committed atomically. The outbox relay publishes both event types to RabbitMQ. For discoveries, the matcher waits for durable property and required availability evidence, then creates event-scoped, filter-specific notification snapshots; existing-advert price events retain their independent path. The notifier renders only persisted listing details, media URLs, triggering prices, and active-alternative context—it never reopens a provider detail page.
+The providers normalize API/RSS/detail payloads before crossing their package boundary. Discovery stores each new listing together with a `listing.discovered.v1` outbox event in one transaction. Distinct later price observations use the separate `listing.price_changed.v1` contract, with the history row, current listing price, and outbox event committed atomically. The outbox relay publishes both event types to RabbitMQ. For discoveries, the matcher waits for durable property and required availability evidence, then creates event-scoped, user-coalesced notification snapshots; existing-advert price events retain their independent path. The notifier renders only persisted listing details, media URLs, triggering prices, and active-alternative context—it never reopens a provider detail page.
