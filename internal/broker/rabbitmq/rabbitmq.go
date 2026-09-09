@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -12,11 +13,14 @@ import (
 )
 
 const (
-	eventsExchange = "home.events"
-	deadExchange   = "home.events.dead"
-	matcherQueue   = "alert-matcher.v1"
-	deadQueue      = "alert-matcher.dead.v1"
-	consumerName   = "latvia-home-radar.alert-matcher.v1"
+	eventsExchange  = "home.events"
+	retryExchange   = "home.events.retry"
+	deadExchange    = "home.events.dead"
+	matcherQueue    = "alert-matcher.v1"
+	retryQueue      = "alert-matcher.retry.v1"
+	deadQueue       = "alert-matcher.dead.v1"
+	consumerName    = "latvia-home-radar.alert-matcher.v1"
+	eventRetryDelay = 5 * time.Second
 )
 
 type Broker struct {
@@ -83,6 +87,9 @@ func (b *Broker) declareTopology() error {
 		if err := channel.ExchangeDeclare(eventsExchange, "topic", true, false, false, false, nil); err != nil {
 			return fmt.Errorf("declare events exchange: %w", err)
 		}
+		if err := channel.ExchangeDeclare(retryExchange, "topic", true, false, false, false, nil); err != nil {
+			return fmt.Errorf("declare retry exchange: %w", err)
+		}
 		if err := channel.ExchangeDeclare(deadExchange, "topic", true, false, false, false, nil); err != nil {
 			return fmt.Errorf("declare dead-letter exchange: %w", err)
 		}
@@ -92,6 +99,16 @@ func (b *Broker) declareTopology() error {
 	}
 	if err := b.consumer.QueueBind(deadQueue, "#", deadExchange, false, nil); err != nil {
 		return fmt.Errorf("bind dead-letter queue: %w", err)
+	}
+	retryArguments := amqp.Table{
+		"x-dead-letter-exchange": eventsExchange,
+		"x-message-ttl":          int32(eventRetryDelay / time.Millisecond),
+	}
+	if _, err := b.consumer.QueueDeclare(retryQueue, true, false, false, false, retryArguments); err != nil {
+		return fmt.Errorf("declare retry queue: %w", err)
+	}
+	if err := b.consumer.QueueBind(retryQueue, "#", retryExchange, false, nil); err != nil {
+		return fmt.Errorf("bind retry queue: %w", err)
 	}
 	arguments := amqp.Table{"x-dead-letter-exchange": deadExchange}
 	if _, err := b.consumer.QueueDeclare(matcherQueue, true, false, false, false, arguments); err != nil {
@@ -114,16 +131,20 @@ func (b *Broker) Publish(ctx context.Context, event events.Envelope) error {
 	if err != nil {
 		return fmt.Errorf("encode event: %w", err)
 	}
-	b.publishMu.Lock()
-	defer b.publishMu.Unlock()
-	if err := b.publisher.PublishWithContext(ctx, eventsExchange, event.Type, false, false, amqp.Publishing{
+	return b.publishConfirmed(ctx, eventsExchange, event.Type, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		MessageId:    event.ID,
 		Type:         event.Type,
 		Timestamp:    event.OccurredAt,
 		Body:         body,
-	}); err != nil {
+	})
+}
+
+func (b *Broker) publishConfirmed(ctx context.Context, exchange, routingKey string, message amqp.Publishing) error {
+	b.publishMu.Lock()
+	defer b.publishMu.Unlock()
+	if err := b.publisher.PublishWithContext(ctx, exchange, routingKey, false, false, message); err != nil {
 		return err
 	}
 	select {
@@ -167,13 +188,14 @@ func (b *Broker) Consume(ctx context.Context, handler func(context.Context, even
 					}
 					continue
 				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(time.Second):
+				if retryErr := b.publishRetry(ctx, delivery, event); retryErr != nil {
+					if nackErr := delivery.Nack(false, true); nackErr != nil {
+						return errors.Join(retryErr, nackErr)
+					}
+					return retryErr
 				}
-				if nackErr := delivery.Nack(false, true); nackErr != nil {
-					return nackErr
+				if ackErr := delivery.Ack(false); ackErr != nil {
+					return ackErr
 				}
 				continue
 			}
@@ -181,6 +203,44 @@ func (b *Broker) Consume(ctx context.Context, handler func(context.Context, even
 				return err
 			}
 		}
+	}
+}
+
+func (b *Broker) publishRetry(ctx context.Context, delivery amqp.Delivery, event events.Envelope) error {
+	headers := amqp.Table{}
+	for key, value := range delivery.Headers {
+		headers[key] = value
+	}
+	headers["x-retry-count"] = retryCount(headers["x-retry-count"]) + 1
+	message := amqp.Publishing{
+		Headers:      headers,
+		ContentType:  "application/json",
+		DeliveryMode: amqp.Persistent,
+		MessageId:    event.ID,
+		Type:         event.Type,
+		Timestamp:    event.OccurredAt,
+		Body:         delivery.Body,
+	}
+	if err := b.publishConfirmed(ctx, retryExchange, event.Type, message); err != nil {
+		return fmt.Errorf("publish delayed retry for event %s: %w", event.ID, err)
+	}
+	return nil
+}
+
+func retryCount(value any) int64 {
+	switch count := value.(type) {
+	case int8:
+		return int64(count)
+	case int16:
+		return int64(count)
+	case int32:
+		return int64(count)
+	case int64:
+		return count
+	case int:
+		return int64(count)
+	default:
+		return 0
 	}
 }
 

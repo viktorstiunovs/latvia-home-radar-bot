@@ -87,6 +87,36 @@ func TestFormatUnknownPriceTransitionOmitsReduction(t *testing.T) {
 	}
 }
 
+func TestFormatCheaperOfferIncludesActiveAlternatives(t *testing.T) {
+	listing := domain.Listing{Source: "city24.lv", URL: "https://city24.test/current?a=1&b=2", PropertyType: domain.PropertyApartment, DealType: domain.DealSale, Title: "Apartment"}
+	alternatives := []domain.ListingAlternative{{Source: "ss.lv", URL: "https://ss.test/other?a=1&b=2", PriceEUR: intp(100000)}}
+	text := FormatCheaperOffer(testLocalizer(t, localization.English), listing, intp(100000), intp(90000), alternatives)
+	for _, want := range []string{"🟢 <b>Cheaper offer · −10%</b>", "<s>€100 000</s>  →  <b>€90 000</b>", "Also currently available", "SS.lv", "€100 000", "a=1&amp;b=2"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in %s", want, text)
+		}
+	}
+}
+
+func TestAlternativeHeadingsAreLocalized(t *testing.T) {
+	listing := domain.Listing{Source: "ss.lv", URL: "https://ss.test/current", PropertyType: domain.PropertyHouse, DealType: domain.DealRent, Title: "House"}
+	alternatives := []domain.ListingAlternative{{Source: "city24.lv", URL: "https://city24.test/other", PriceEUR: intp(700)}}
+	tests := []struct {
+		language string
+		want     string
+	}{
+		{localization.English, "Also currently available"},
+		{localization.Latvian, "Pašlaik pieejams arī"},
+		{localization.Russian, "Также доступно сейчас"},
+	}
+	for _, test := range tests {
+		text := FormatListingWithAlternatives(testLocalizer(t, test.language), listing, alternatives)
+		if !strings.Contains(text, test.want) {
+			t.Errorf("%s missing %q in %s", test.language, test.want, text)
+		}
+	}
+}
+
 func testLocalizer(t *testing.T, languageTag string) localization.Localizer {
 	t.Helper()
 	catalog, err := localization.New()

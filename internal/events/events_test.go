@@ -2,6 +2,8 @@ package events
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -63,6 +65,18 @@ func TestListingPriceChangedRejectsUnchangedPrice(t *testing.T) {
 	event := Envelope{Type: ListingPriceChangedV1, Data: json.RawMessage(payload)}
 	if _, err := DecodeListingPriceChanged(event); err == nil {
 		t.Fatal("expected unchanged price event to fail")
+	}
+}
+
+func TestDependencyPendingSurvivesWrapping(t *testing.T) {
+	cause := errors.New("availability evidence pending")
+	err := fmt.Errorf("match listing: %w", DependencyPending(cause))
+
+	if !IsDependencyPending(err) {
+		t.Fatalf("dependency pending classification was lost: %v", err)
+	}
+	if IsPermanent(err) || !errors.Is(err, cause) {
+		t.Fatalf("unexpected error classification: %v", err)
 	}
 }
 

@@ -306,3 +306,12 @@ other = "🟢 <b>Cena samazināta · {{.Percentage}}</b>"
 
 [ListingPriceTransition]
 other = "<s>{{.Previous}}</s>  →  <b>{{.Current}}</b>"
+
+[ListingCheaperOfferHeading]
+other = "🟢 <b>Lētāks piedāvājums · {{.Percentage}}</b>"
+
+[ListingOtherOffersHeading]
+other = "🔗 <b>Pašlaik pieejams arī</b>"
+
+[ListingOtherOffer]
+other = "• <a href=\"{{.URL}}\">{{.Source}}</a> · {{.Price}}"

@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/provider"
 )
 
 const (
@@ -79,6 +81,37 @@ func (s *Source) Enrich(ctx context.Context, listing domain.Listing) (domain.Lis
 	}
 	detailed.DetailsEnriched = true
 	return detailed, nil
+}
+
+func (s *Source) CheckAvailability(ctx context.Context, listing domain.Listing) (domain.AvailabilityObservation, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	endpoint := apiURL + "/realties/" + url.PathEscape(listing.ExternalID)
+	status, contentType, body, err := provider.FetchAvailability(ctx, s.client, endpoint, func(host string) bool { return host == "api.city24.lv" }, "application/json")
+	if err != nil {
+		return domain.AvailabilityObservation{}, err
+	}
+	return ClassifyAvailability(status, contentType, body)
+}
+
+func ClassifyAvailability(status int, contentType string, body []byte) (domain.AvailabilityObservation, error) {
+	if status == http.StatusNotFound || status == http.StatusGone {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityInactive, Evidence: fmt.Sprintf("City24 HTTP %d", status)}, nil
+	}
+	if status < 200 || status >= 300 {
+		return domain.AvailabilityObservation{}, fmt.Errorf("City24 availability HTTP %d", status)
+	}
+	if !strings.Contains(strings.ToLower(contentType), "json") {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityUnknown, Evidence: "City24 returned non-JSON content"}, nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityUnknown, Evidence: "City24 response could not be decoded"}, nil
+	}
+	if intValue(payload["status_id"]) == 2 && stringValue(payload["id"]) != "" {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityActive, Evidence: "City24 published status 2"}, nil
+	}
+	return domain.AvailabilityObservation{Status: domain.AvailabilityUnknown, Evidence: "City24 status is not conclusively published"}, nil
 }
 
 func (s *Source) getJSON(ctx context.Context, endpoint string, target any) (*http.Response, error) {

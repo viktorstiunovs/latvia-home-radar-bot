@@ -7,7 +7,6 @@ import (
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
 	"github.com/clive00lewis/latvia-home-radar/internal/events"
-	"github.com/jackc/pgx/v5"
 )
 
 const listingMatcherConsumer = "alert-matcher.v1"
@@ -50,6 +49,10 @@ func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64,
 	if notificationType == domain.NotificationPriceChanged {
 		listing.PriceEUR = currentPriceEUR
 	}
+	listingJSON, err := json.Marshal(listing)
+	if err != nil {
+		return 0, err
+	}
 	filters, err := loadFilters(ctx, tx)
 	if err != nil {
 		return 0, err
@@ -62,7 +65,7 @@ func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64,
 		if !domain.Matches(listing, filter) {
 			continue
 		}
-		tag, err := tx.Exec(ctx, `INSERT INTO notifications(filter_id,listing_id,trigger_event_id,notification_type,previous_price_eur,current_price_eur,status,next_attempt_at) VALUES($1,$2,$3::uuid,$4,$5,$6,'pending',now()) ON CONFLICT(filter_id,trigger_event_id) DO NOTHING`, filter.ID, listingID, eventID, notificationType, previousPriceEUR, currentPriceEUR)
+		tag, err := tx.Exec(ctx, `INSERT INTO notifications(filter_id,listing_id,trigger_event_id,notification_type,previous_price_eur,current_price_eur,listing_snapshot,status,next_attempt_at) VALUES($1,$2,$3::uuid,$4,$5,$6,$7,'pending',now()) ON CONFLICT(filter_id,trigger_event_id) DO NOTHING`, filter.ID, listingID, eventID, notificationType, previousPriceEUR, currentPriceEUR, listingJSON)
 		if err != nil {
 			return 0, err
 		}
@@ -74,17 +77,18 @@ func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64,
 	return created, nil
 }
 
-func loadListing(ctx context.Context, tx pgx.Tx, listingID int64) (domain.Listing, error) {
+func loadListing(ctx context.Context, tx queryRower, listingID int64) (domain.Listing, error) {
 	var listing domain.Listing
 	var property, deal string
 	var photoJSON []byte
-	err := tx.QueryRow(ctx, `SELECT l.id,l.source,l.external_id,l.url,l.property_type,l.deal_type,l.title,l.price_eur,l.rooms,l.area_m2,COALESCE(l.city,''),COALESCE(l.district,''),COALESCE(l.address,''),l.floor,l.total_floors,COALESCE(l.building_series,''),COALESCE(l.building_type,''),l.land_area_m2,l.details_enriched,l.published_at,COALESCE(l.image_url,''),l.photo_urls,COALESCE(a.key,''),COALESCE(a.name,''),COALESCE(a.type,''),COALESCE(parent.key,''),COALESCE(parent.name,''),COALESCE(sa.external_key,''),COALESCE(sa.raw_name,'') FROM listings l LEFT JOIN areas a ON a.id=l.area_id LEFT JOIN areas parent ON parent.id=a.parent_id LEFT JOIN source_areas sa ON sa.id=l.source_area_id WHERE l.id=$1`, listingID).Scan(
-		&listing.ID, &listing.Source, &listing.ExternalID, &listing.URL, &property, &deal, &listing.Title,
+	err := tx.QueryRow(ctx, `SELECT l.id,l.source,l.external_id,l.url,l.property_type,l.deal_type,l.title,l.description,l.normalized_address,l.normalized_description,l.price_eur,l.rooms,l.area_m2,COALESCE(l.city,''),COALESCE(l.district,''),COALESCE(l.address,''),l.floor,l.total_floors,COALESCE(l.building_series,''),COALESCE(l.building_type,''),l.land_area_m2,l.details_enriched,l.published_at,COALESCE(l.image_url,''),l.photo_urls,COALESCE(a.key,''),COALESCE(a.name,''),COALESCE(a.type,''),COALESCE(parent.key,''),COALESCE(parent.name,''),COALESCE(sa.external_key,''),COALESCE(sa.raw_name,''),l.availability_status,l.first_seen_at,l.last_seen_at,l.availability_changed_at FROM listings l LEFT JOIN areas a ON a.id=l.area_id LEFT JOIN areas parent ON parent.id=a.parent_id LEFT JOIN source_areas sa ON sa.id=l.source_area_id WHERE l.id=$1`, listingID).Scan(
+		&listing.ID, &listing.Source, &listing.ExternalID, &listing.URL, &property, &deal, &listing.Title, &listing.Description, &listing.NormalizedAddress, &listing.NormalizedDescription,
 		&listing.PriceEUR, &listing.Rooms, &listing.AreaM2, &listing.City, &listing.District, &listing.Address,
 		&listing.Floor, &listing.TotalFloors, &listing.BuildingSeries, &listing.BuildingType, &listing.LandAreaM2,
 		&listing.DetailsEnriched, &listing.PublishedAt, &listing.ImageURL, &photoJSON, &listing.AreaKey,
 		&listing.AreaName, &listing.AreaType, &listing.AreaParentKey, &listing.AreaParentName,
-		&listing.SourceAreaKey, &listing.SourceAreaName,
+		&listing.SourceAreaKey, &listing.SourceAreaName, &listing.AvailabilityStatus, &listing.FirstSeenAt,
+		&listing.LastSeenAt, &listing.AvailabilityChangedAt,
 	)
 	if err != nil {
 		return domain.Listing{}, err

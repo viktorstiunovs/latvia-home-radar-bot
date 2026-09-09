@@ -16,12 +16,14 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/provider"
 )
 
 var feedURLs = map[string]string{"apartment:rent": "https://www.ss.lv/lv/real-estate/flats/hand_over/rss/", "apartment:sale": "https://www.ss.lv/lv/real-estate/flats/sell/rss/", "house:rent": "https://www.ss.lv/lv/real-estate/homes-summer-residences/hand_over/rss/", "house:sale": "https://www.ss.lv/lv/real-estate/homes-summer-residences/sell/rss/"}
 var photoPattern = regexp.MustCompile(`(?i)https://i\.ss\.lv/gallery/[^"'<>\s]+?\.800\.(?:jpe?g|png|webp)`)
 var fieldPattern = regexp.MustCompile(`(?is)<td\b[^>]*class=["']?ads_opt_name["']?[^>]*>(.*?)</td>\s*<td\b[^>]*class=["']?ads_opt["']?[^>]*>(.*?)</td>`)
 var htmlTagPattern = regexp.MustCompile(`<[^>]+>`)
+var descriptionBreakPattern = regexp.MustCompile(`(?i)</?(?:br|p|div|li|ul|ol|h[1-6])\b[^>]*>`)
 
 type Source struct {
 	property domain.PropertyType
@@ -56,6 +58,43 @@ func (s *Source) Enrich(ctx context.Context, listing domain.Listing) (domain.Lis
 		result.PhotoURLs = []string{listing.ImageURL}
 	}
 	return result, nil
+}
+
+func (s *Source) CheckAvailability(ctx context.Context, listing domain.Listing) (domain.AvailabilityObservation, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	status, contentType, body, err := provider.FetchAvailability(ctx, s.client, listing.URL, isSSHost, "text/html")
+	if err != nil {
+		return domain.AvailabilityObservation{}, err
+	}
+	return ClassifyAvailability(status, contentType, body)
+}
+
+func ClassifyAvailability(status int, contentType string, body []byte) (domain.AvailabilityObservation, error) {
+	if status == http.StatusNotFound || status == http.StatusGone {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityInactive, Evidence: fmt.Sprintf("ss.lv HTTP %d", status)}, nil
+	}
+	if status < 200 || status >= 300 {
+		return domain.AvailabilityObservation{}, fmt.Errorf("SS.lv availability HTTP %d", status)
+	}
+	if !strings.Contains(strings.ToLower(contentType), "html") {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityUnknown, Evidence: "SS.lv returned non-HTML content"}, nil
+	}
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(string(body)))
+	if err != nil {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityUnknown, Evidence: "SS.lv page could not be parsed"}, nil
+	}
+	if document.Find("#tr_cont").Length() > 0 && document.Find("#msg_div_msg").Length() > 0 {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityActive, Evidence: "SS.lv live advert contact row"}, nil
+	}
+	if document.Find("#msg_div_msg").Length() > 0 && document.Find(".ads_opt_name, .ads_contacts_name, #tr_foto").Length() > 0 {
+		return domain.AvailabilityObservation{Status: domain.AvailabilityInactive, Evidence: "SS.lv archived advert detail without live contact row"}, nil
+	}
+	return domain.AvailabilityObservation{Status: domain.AvailabilityUnknown, Evidence: "SS.lv page has no conclusive advert state"}, nil
+}
+
+func isSSHost(host string) bool {
+	return host == "ss.lv" || host == "ss.com" || strings.HasSuffix(host, ".ss.lv") || strings.HasSuffix(host, ".ss.com")
 }
 
 func (s *Source) get(ctx context.Context, endpoint string) ([]byte, error) {
@@ -143,8 +182,12 @@ func ParseFeed(text string, deal domain.DealType, property domain.PropertyType) 
 }
 
 func EnrichFromPage(listing domain.Listing, text string) domain.Listing {
+	if description := ParseDescription(text); description != "" {
+		listing.Description = description
+	}
 	fields := detailFields(text)
 	if len(fields) == 0 {
+		listing.DetailsEnriched = listing.Description != ""
 		return listing
 	}
 	first := func(labels ...string) string {
@@ -200,6 +243,28 @@ func EnrichFromPage(listing domain.Listing, text string) domain.Listing {
 	}
 	listing.DetailsEnriched = true
 	return listing
+}
+
+func ParseDescription(text string) string {
+	document, err := goquery.NewDocumentFromReader(strings.NewReader(text))
+	if err != nil {
+		return ""
+	}
+	for _, selector := range []string{"#msg_div_msg", ".msg_div_msg", "[itemprop='description']"} {
+		selection := document.Find(selector).First()
+		if selection.Length() == 0 {
+			continue
+		}
+		value, err := selection.Html()
+		if err != nil {
+			continue
+		}
+		value = descriptionBreakPattern.ReplaceAllString(value, " ")
+		if value = cleanHTML(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func ParsePhotoURLs(text string, limit int) []string {

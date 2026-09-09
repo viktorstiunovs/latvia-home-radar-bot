@@ -34,6 +34,18 @@
   an event as published.
 - Listing matching is idempotent by event ID. Preserve that property when
   changing retries or consumer behavior.
+- A listing is one provider advert; a property is the stable real-world home
+  that may own several listings. Retain advert, price, availability, evidence,
+  decision, and membership history rather than collapsing or deleting it.
+- `DEDUPLICATION_ENABLED` controls signal collection, property resolution,
+  availability tracking, and duplicate-aware delivery as one pipeline. Queue
+  identity work only for new listings or changed identity inputs, and reuse
+  fingerprints when effective photo URLs are unchanged.
+- Duplicate-aware discovery events wait for completed property resolution and
+  fresh availability evidence. Schedule missing priority checks before a
+  durable delayed retry; never introduce an immediate RabbitMQ requeue loop.
+- Show another advert as a current alternative only when provider evidence
+  confirms it is active. A reachable advert URL alone is not sufficient.
 - `listing.discovered.v1` is a versioned external contract. Do not change its
   meaning incompatibly; introduce a new event version instead.
 - Notifications operate only on persisted listing details and media URLs; they
@@ -127,4 +139,3 @@ You MUST read the overview resource to understand the complete workflow. The inf
 </CRITICAL_INSTRUCTION>
 
 <!-- BACKLOG.MD MCP GUIDELINES END -->
-

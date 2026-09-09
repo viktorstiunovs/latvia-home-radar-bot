@@ -124,6 +124,9 @@ const (
 	ListingPriceIncreasedHeading MessageID = "ListingPriceIncreasedHeading"
 	ListingPriceDecreasedHeading MessageID = "ListingPriceDecreasedHeading"
 	ListingPriceTransition       MessageID = "ListingPriceTransition"
+	ListingCheaperOfferHeading   MessageID = "ListingCheaperOfferHeading"
+	ListingOtherOffersHeading    MessageID = "ListingOtherOffersHeading"
+	ListingOtherOffer            MessageID = "ListingOtherOffer"
 )
 
 var messageIDs = []MessageID{
@@ -143,6 +146,7 @@ var messageIDs = []MessageID{
 	ListingForRent, ListingForSale, ListingPriceOnRequest, ListingPerMonth, ListingRooms, ListingStreet,
 	ListingFloor, ListingSeries, ListingHouseType, ListingFloors, ListingLandArea, ListingHeading, ListingViewOn,
 	ListingPriceChangeHeading, ListingPriceIncreasedHeading, ListingPriceDecreasedHeading, ListingPriceTransition,
+	ListingCheaperOfferHeading, ListingOtherOffersHeading, ListingOtherOffer,
 }
 
 var supportedLanguages = []string{English, Latvian, Russian}

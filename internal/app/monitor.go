@@ -53,6 +53,7 @@ func (m *Monitor) Poll(ctx context.Context, source provider.Source) error {
 		return err
 	}
 	parsed := len(listings)
+	sightings := listings
 	if initialized {
 		needed, err := m.store.EnrichmentKeys(ctx, listings)
 		if err != nil {
@@ -62,6 +63,9 @@ func (m *Monitor) Poll(ctx context.Context, source provider.Source) error {
 	}
 	result, err := m.store.ProcessDiscovered(ctx, source.Key(), listings, initialized)
 	if err != nil {
+		return err
+	}
+	if err := m.store.RecordFeedSightings(ctx, sightings); err != nil {
 		return err
 	}
 	m.logger.Info("source poll complete", "source", source.Key(), "parsed", parsed, "new", result.Inserted, "events", result.Events, "baseline", !initialized)

@@ -13,7 +13,13 @@ import (
 type fakeStore struct {
 	initialized bool
 	processed   []domain.Listing
+	sightings   []domain.Listing
 	notify      bool
+}
+
+func (f *fakeStore) RecordFeedSightings(_ context.Context, listings []domain.Listing) error {
+	f.sightings = listings
+	return nil
 }
 
 func (f *fakeStore) IsSourceInitialized(context.Context, string) (bool, error) {
@@ -70,7 +76,7 @@ func TestMonitorBaselineAndEnrichment(t *testing.T) {
 	if err := m.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	if source.calls != 0 || store.notify {
+	if source.calls != 0 || store.notify || len(store.sightings) != 1 {
 		t.Fatal("baseline should neither enrich nor notify")
 	}
 	store.initialized = true

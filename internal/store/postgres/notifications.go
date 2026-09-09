@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Store) Pending(ctx context.Context, limit int) ([]domain.PendingNotification, error) {
-	rows, err := s.pool.Query(ctx, `SELECT n.id,n.filter_id,n.attempts,n.notification_type,n.previous_price_eur,n.current_price_eur,u.telegram_user_id,COALESCE(u.name,''),u.chat_id,u.language_tag,l.id,l.source,l.external_id,l.url,l.property_type,l.deal_type,l.title,l.price_eur,l.rooms,l.area_m2,COALESCE(l.city,''),COALESCE(l.district,''),COALESCE(l.address,''),l.floor,l.total_floors,COALESCE(l.building_series,''),COALESCE(l.building_type,''),l.land_area_m2,l.details_enriched,l.published_at,COALESCE(l.image_url,''),l.photo_urls,COALESCE(a.key,''),COALESCE(a.name,''),COALESCE(a.type,''),COALESCE(parent.key,''),COALESCE(parent.name,''),COALESCE(sa.external_key,''),COALESCE(sa.raw_name,'') FROM notifications n JOIN filters f ON f.id=n.filter_id JOIN users u ON u.id=f.user_id JOIN listings l ON l.id=n.listing_id LEFT JOIN areas a ON a.id=l.area_id LEFT JOIN areas parent ON parent.id=a.parent_id LEFT JOIN source_areas sa ON sa.id=l.source_area_id WHERE n.status='pending' AND n.next_attempt_at<=now() AND f.enabled=TRUE ORDER BY n.next_attempt_at,n.id LIMIT $1`, limit)
+	rows, err := s.pool.Query(ctx, `SELECT n.id,n.filter_id,n.attempts,n.notification_type,n.previous_price_eur,n.current_price_eur,n.property_id,n.comparison_listing_id,n.listing_snapshot,n.active_alternatives,u.telegram_user_id,COALESCE(u.name,''),u.chat_id,u.language_tag,l.id,l.source,l.external_id,l.url,l.property_type,l.deal_type,l.title,l.price_eur,l.rooms,l.area_m2,COALESCE(l.city,''),COALESCE(l.district,''),COALESCE(l.address,''),l.floor,l.total_floors,COALESCE(l.building_series,''),COALESCE(l.building_type,''),l.land_area_m2,l.details_enriched,l.published_at,COALESCE(l.image_url,''),l.photo_urls,COALESCE(a.key,''),COALESCE(a.name,''),COALESCE(a.type,''),COALESCE(parent.key,''),COALESCE(parent.name,''),COALESCE(sa.external_key,''),COALESCE(sa.raw_name,'') FROM notifications n JOIN filters f ON f.id=n.filter_id JOIN users u ON u.id=f.user_id JOIN listings l ON l.id=n.listing_id LEFT JOIN areas a ON a.id=l.area_id LEFT JOIN areas parent ON parent.id=a.parent_id LEFT JOIN source_areas sa ON sa.id=l.source_area_id WHERE n.status='pending' AND n.next_attempt_at<=now() AND f.enabled=TRUE ORDER BY n.next_attempt_at,n.id LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -18,8 +18,8 @@ func (s *Store) Pending(ctx context.Context, limit int) ([]domain.PendingNotific
 	for rows.Next() {
 		var n domain.PendingNotification
 		var property, deal, notificationType string
-		var photoJSON []byte
-		if err := rows.Scan(&n.ID, &n.FilterID, &n.Attempts, &notificationType, &n.PreviousPriceEUR, &n.CurrentPriceEUR, &n.TelegramUserID, &n.UserName, &n.ChatID, &n.LanguageTag, &n.ListingID, &n.Listing.Source, &n.Listing.ExternalID, &n.Listing.URL, &property, &deal, &n.Listing.Title, &n.Listing.PriceEUR, &n.Listing.Rooms, &n.Listing.AreaM2, &n.Listing.City, &n.Listing.District, &n.Listing.Address, &n.Listing.Floor, &n.Listing.TotalFloors, &n.Listing.BuildingSeries, &n.Listing.BuildingType, &n.Listing.LandAreaM2, &n.Listing.DetailsEnriched, &n.Listing.PublishedAt, &n.Listing.ImageURL, &photoJSON, &n.Listing.AreaKey, &n.Listing.AreaName, &n.Listing.AreaType, &n.Listing.AreaParentKey, &n.Listing.AreaParentName, &n.Listing.SourceAreaKey, &n.Listing.SourceAreaName); err != nil {
+		var photoJSON, listingJSON, alternativesJSON []byte
+		if err := rows.Scan(&n.ID, &n.FilterID, &n.Attempts, &notificationType, &n.PreviousPriceEUR, &n.CurrentPriceEUR, &n.PropertyID, &n.ComparisonID, &listingJSON, &alternativesJSON, &n.TelegramUserID, &n.UserName, &n.ChatID, &n.LanguageTag, &n.ListingID, &n.Listing.Source, &n.Listing.ExternalID, &n.Listing.URL, &property, &deal, &n.Listing.Title, &n.Listing.PriceEUR, &n.Listing.Rooms, &n.Listing.AreaM2, &n.Listing.City, &n.Listing.District, &n.Listing.Address, &n.Listing.Floor, &n.Listing.TotalFloors, &n.Listing.BuildingSeries, &n.Listing.BuildingType, &n.Listing.LandAreaM2, &n.Listing.DetailsEnriched, &n.Listing.PublishedAt, &n.Listing.ImageURL, &photoJSON, &n.Listing.AreaKey, &n.Listing.AreaName, &n.Listing.AreaType, &n.Listing.AreaParentKey, &n.Listing.AreaParentName, &n.Listing.SourceAreaKey, &n.Listing.SourceAreaName); err != nil {
 			return nil, err
 		}
 		n.Type = domain.NotificationType(notificationType)
@@ -30,6 +30,17 @@ func (s *Store) Pending(ctx context.Context, limit int) ([]domain.PendingNotific
 			n.Listing.PriceEUR = n.CurrentPriceEUR
 		}
 		_ = json.Unmarshal(photoJSON, &n.Listing.PhotoURLs)
+		var snapshot domain.Listing
+		if err := json.Unmarshal(listingJSON, &snapshot); err != nil {
+			return nil, err
+		}
+		if snapshot.ID > 0 {
+			n.Listing = snapshot
+			n.ListingID = snapshot.ID
+		}
+		if err := json.Unmarshal(alternativesJSON, &n.Alternatives); err != nil {
+			return nil, err
+		}
 		result = append(result, n)
 	}
 	return result, rows.Err()

@@ -16,11 +16,45 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   saved filter, using green/decrease and red/increase indicators, a
   struck-through previous price, an emphasized current price, and the signed
   percentage change.
+- Retained complete provider descriptions separately from Telegram titles and
+  added versioned normalized address/description evidence for duplicate
+  matching and future analytics.
+- Added bounded, provider-host-restricted photo signal collection with SHA-256
+  and perceptual fingerprints, immutable evidence snapshots, durable attempt
+  outcomes, atomic completion, retries, and incremental baseline backfill
+  without retaining downloaded image bodies.
+- Added versioned conservative duplicate resolution in shadow mode with bounded
+  candidate generation, explainable score evidence, durable accepted,
+  ambiguous, and rejected decisions, stable property identities, append-only
+  membership history, operator correction primitives, and inspection views.
+- Added tri-state listing availability, append-only lifecycle observations,
+  active-only current-offer queries, and bounded provider-specific checks that
+  recognize accessible archived SS.lv adverts and City24 removal responses
+  while retaining inconclusive results as unknown and preserving all history.
+- Added rollout-controlled duplicate-aware saved alerts: confident duplicate
+  reposts are suppressed per property and filter, true inactive relistings
+  notify on higher or lower matching prices, concurrent cheaper offers get
+  localized rich alerts, and normal/cheaper messages include confirmed-active
+  provider alternatives. Event-time listing and alternative snapshots keep
+  retries stable; ambiguous candidates remain normal listings.
 
 ### Changed
 
 - Made the PostgreSQL data location and PostgreSQL/RabbitMQ credentials
   configurable through the Compose environment.
+- Consolidated the unreleased price-history, identity, availability, and
+  duplicate-notification schema into one production migration, and replaced
+  four interdependent rollout flags with one `DEDUPLICATION_ENABLED` switch.
+- Reused photo fingerprints for unchanged provider URLs and stopped
+  price-only listing observations from regenerating identity work.
+- Replaced blanket daily advert checks with feed-aware stale-listing checks,
+  immediate checks required by duplicate decisions, inactive-listing dormancy,
+  and capped exponential scheduling for inconclusive provider responses.
+- Prevented duplicate-aware discovery events from stalling when property
+  membership changes during processing: missing availability checks are now
+  prioritized automatically, transient RabbitMQ deliveries use a durable
+  delayed retry queue, and concurrent property-resolution commits are
+  serialized to avoid PostgreSQL deadlocks.
 
 ## [0.2.0] - 2026-09-05
 

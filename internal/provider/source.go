@@ -11,3 +11,7 @@ type Source interface {
 	FetchRecent(context.Context) ([]domain.Listing, error)
 	Enrich(context.Context, domain.Listing) (domain.Listing, error)
 }
+
+type AvailabilityChecker interface {
+	CheckAvailability(context.Context, domain.Listing) (domain.AvailabilityObservation, error)
+}

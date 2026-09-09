@@ -103,10 +103,14 @@ func (n *Notifier) deliver(ctx context.Context, item domain.PendingNotification)
 }
 
 func (n *Notifier) caption(item domain.PendingNotification) string {
-	if item.Type == domain.NotificationPriceChanged {
+	switch item.Type {
+	case domain.NotificationPriceChanged, domain.NotificationRelistingChanged:
 		return telegram.FormatPriceChange(n.catalog.For(item.LanguageTag), item.Listing, item.PreviousPriceEUR, item.CurrentPriceEUR)
+	case domain.NotificationCheaperOffer:
+		return telegram.FormatCheaperOffer(n.catalog.For(item.LanguageTag), item.Listing, item.PreviousPriceEUR, item.CurrentPriceEUR, item.Alternatives)
+	default:
+		return telegram.FormatListingWithAlternatives(n.catalog.For(item.LanguageTag), item.Listing, item.Alternatives)
 	}
-	return telegram.FormatListing(n.catalog.For(item.LanguageTag), item.Listing)
 }
 
 func sameStrings(a, b []string) bool {

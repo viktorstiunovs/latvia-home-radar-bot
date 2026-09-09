@@ -84,18 +84,26 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	sources := buildSources(httpClient)
 	monitor := app.NewMonitor(store, sources, cfg.PollInterval, logger)
 	outbox := app.NewOutboxRelay(store, broker, logger)
-	matcher := app.NewListingMatcher(store, broker, logger)
+	matcher := app.NewListingMatcher(store, broker, logger, cfg.DeduplicationEnabled)
 	notifier := app.NewNotifier(store, api, httpClient, catalog, logger)
+	signalCollector := app.NewListingSignalCollector(store, sources, httpClient, cfg.SignalWorkers, cfg.SignalPhotoLimit, logger)
+	duplicateResolver := app.NewDuplicateResolver(store, cfg.DuplicateWorkers, cfg.DuplicateCandidateLimit, logger)
+	availabilityTracker := app.NewAvailabilityTracker(store, sources, cfg.AvailabilityWorkers, cfg.AvailabilityInterval, logger)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	results := make(chan error, 5)
+	results := make(chan error, 8)
 	go func() { results <- tgBot.Run(ctx) }()
 	go func() { results <- monitor.Run(ctx) }()
 	go func() { results <- outbox.Run(ctx) }()
 	go func() { results <- matcher.Run(ctx) }()
 	go func() { results <- notifier.Run(ctx) }()
+	if cfg.DeduplicationEnabled {
+		go func() { results <- signalCollector.Run(ctx) }()
+		go func() { results <- duplicateResolver.Run(ctx) }()
+		go func() { results <- availabilityTracker.Run(ctx) }()
+	}
 	err = <-results
 	cancel()
 

@@ -309,3 +309,12 @@ other = "🟢 <b>Цена снижена · {{.Percentage}}</b>"
 
 [ListingPriceTransition]
 other = "<s>{{.Previous}}</s>  →  <b>{{.Current}}</b>"
+
+[ListingCheaperOfferHeading]
+other = "🟢 <b>Более дешёвое предложение · {{.Percentage}}</b>"
+
+[ListingOtherOffersHeading]
+other = "🔗 <b>Также доступно сейчас</b>"
+
+[ListingOtherOffer]
+other = "• <a href=\"{{.URL}}\">{{.Source}}</a> · {{.Price}}"

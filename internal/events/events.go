@@ -36,6 +36,8 @@ type ListingPriceChanged struct {
 
 type permanentError struct{ cause error }
 
+type dependencyPendingError struct{ cause error }
+
 func (e permanentError) Error() string {
 	return e.cause.Error()
 }
@@ -53,6 +55,26 @@ func Permanent(err error) error {
 
 func IsPermanent(err error) bool {
 	var target permanentError
+	return errors.As(err, &target)
+}
+
+func (e dependencyPendingError) Error() string {
+	return e.cause.Error()
+}
+
+func (e dependencyPendingError) Unwrap() error {
+	return e.cause
+}
+
+func DependencyPending(err error) error {
+	if err == nil {
+		return nil
+	}
+	return dependencyPendingError{cause: err}
+}
+
+func IsDependencyPending(err error) bool {
+	var target dependencyPendingError
 	return errors.As(err, &target)
 }
 

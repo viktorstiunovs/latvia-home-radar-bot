@@ -15,6 +15,7 @@ var rootSlugByID = map[int]string{245396: "riga", 245372: "jurmala", 245343: "ri
 var standaloneNames = map[int]string{278550: "Biķernieki", 278551: "Ķīšupe"}
 var areaNameAliases = map[int]string{270705: "Šampēteris-Pleskodāle", 270742: "Latgales priekšpilsēta", 270739: "Krasta rajons", 270735: "Dzegužkalns (Dzirciems)", 270744: "Mangaļsala"}
 var tagPattern = regexp.MustCompile(`<[^>]+>`)
+var breakTagPattern = regexp.MustCompile(`(?i)</?(?:br|p|div|li|ul|ol|h[1-6])\b[^>]*>`)
 
 func ParseOffer(payload map[string]any, deal domain.DealType, property domain.PropertyType) (domain.Listing, error) {
 	id := stringValue(payload["id"])
@@ -39,7 +40,7 @@ func ParseOffer(payload map[string]any, deal domain.DealType, property domain.Pr
 		image = imageURL(payload["main_image"])
 	}
 	city, district := locationLabels(address)
-	l := domain.Listing{Source: "city24.lv", ExternalID: id, URL: publicURL + friendly, DealType: deal, PropertyType: property, Title: listingTitle(payload, property, city, district), PriceEUR: intPtr(payload["price"]), Rooms: intPtr(payload["room_count"]), AreaM2: floatPtr(payload["property_size"]), City: city, District: district, Address: streetAddress(address), Floor: intPtr(attributes["FLOOR"]), TotalFloors: intPtr(attributes["TOTAL_FLOORS"]), BuildingSeries: attributeLabel(attributes["HOUSE_TYPE"]), BuildingType: attributeLabel(attributes["BUILDING_MATERIAL"]), LandAreaM2: landArea(payload), PublishedAt: timestamp(payload["date_created"]), ImageURL: image, PhotoURLs: photos}
+	l := domain.Listing{Source: "city24.lv", ExternalID: id, URL: publicURL + friendly, DealType: deal, PropertyType: property, Title: listingTitle(payload, property, city, district), Description: listingDescription(payload), PriceEUR: intPtr(payload["price"]), Rooms: intPtr(payload["room_count"]), AreaM2: floatPtr(payload["property_size"]), City: city, District: district, Address: streetAddress(address), Floor: intPtr(attributes["FLOOR"]), TotalFloors: intPtr(attributes["TOTAL_FLOORS"]), BuildingSeries: attributeLabel(attributes["HOUSE_TYPE"]), BuildingType: attributeLabel(attributes["BUILDING_MATERIAL"]), LandAreaM2: landArea(payload), PublishedAt: timestamp(payload["date_created"]), ImageURL: image, PhotoURLs: photos}
 	if area != nil {
 		l.SourceAreaKey = area.SourceKey
 		l.SourceAreaName = area.RawName
@@ -280,7 +281,8 @@ func timestamp(value any) *time.Time {
 
 func plainText(value any) string {
 	text := stringValue(value)
-	text = tagPattern.ReplaceAllString(html.UnescapeString(text), " ")
+	text = breakTagPattern.ReplaceAllString(html.UnescapeString(text), " ")
+	text = tagPattern.ReplaceAllString(text, "")
 	return strings.Join(strings.Fields(text), " ")
 }
 
@@ -310,4 +312,22 @@ func listingTitle(payload map[string]any, property domain.PropertyType, city, di
 		return name + " in " + location
 	}
 	return name
+}
+
+func listingDescription(payload map[string]any) string {
+	descriptions := mapping(payload["descriptions"])
+	for _, locale := range []string{"lv_LV", "ru_RU", "en_GB", "en_US"} {
+		localized := mapping(descriptions[locale])
+		parts := make([]string, 0, 2)
+		for _, field := range []string{"introduction", "description"} {
+			text := plainText(localized[field])
+			if text != "" && (len(parts) == 0 || parts[len(parts)-1] != text) {
+				parts = append(parts, text)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, " ")
+		}
+	}
+	return ""
 }
