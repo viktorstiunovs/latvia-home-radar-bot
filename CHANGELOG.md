@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-09
+
 ### Added
 
 - Added an administrator-only `/broadcast` command for messaging all registered
@@ -83,6 +85,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Replaced the Python application while retaining compatibility with its
   existing PostgreSQL data.
 
-[Unreleased]: https://github.com/viktorstiunovs/latvia-home-radar-bot/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/viktorstiunovs/latvia-home-radar-bot/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/viktorstiunovs/latvia-home-radar-bot/compare/v0.2.0...v1.0.0
 [0.1.0]: https://github.com/viktorstiunovs/latvia-home-radar-bot/releases/tag/v0.1.0
 [0.2.0]: https://github.com/viktorstiunovs/latvia-home-radar-bot/releases/tag/v0.2.0
