@@ -492,7 +492,7 @@ func TestListingSignalJobsRetainImmutableSnapshotsAndRetryAtomically(t *testing.
 		t.Fatalf("failed attempt = %q/%q", outcome, lastError)
 	}
 
-	removed := domain.Listing{Source: "city24.lv", ExternalID: "signals-gone", URL: "https://www.city24.lv/real-estate/signals-gone", DealType: domain.DealSale, PropertyType: domain.PropertyApartment, Title: "Removed listing", PriceEUR: intPointer(90000), Address: "Dzirnavu iela 10", PhotoURLs: []string{"https://static.img-city24.lv/removed.jpg"}}
+	removed := domain.Listing{Source: "city24.lv", ExternalID: "signals-gone", URL: "https://www.city24.lv/real-estate/signals-gone", DealType: domain.DealSale, PropertyType: domain.PropertyApartment, Title: "Removed listing", PriceEUR: intPointer(90000), Address: "Dzirnavu iela 10"}
 	if result, err := store.ProcessDiscovered(ctx, "city24.lv:latvia:apartments:sale", []domain.Listing{removed}, false); err != nil || result.Inserted != 1 {
 		t.Fatalf("removed listing discovery=%+v err=%v", result, err)
 	}

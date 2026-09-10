@@ -122,7 +122,11 @@ func (s *Store) CompleteListingSignalJob(ctx context.Context, job domain.Listing
 		}
 	}
 
-	photoJSON, err := json.Marshal(signals.Listing.PhotoURLs)
+	photoURLs := signals.Listing.PhotoURLs
+	if photoURLs == nil {
+		photoURLs = []string{}
+	}
+	photoJSON, err := json.Marshal(photoURLs)
 	if err != nil {
 		return err
 	}
