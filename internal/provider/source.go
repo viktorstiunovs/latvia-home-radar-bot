@@ -15,3 +15,11 @@ type Source interface {
 type AvailabilityChecker interface {
 	CheckAvailability(context.Context, domain.Listing) (domain.AvailabilityObservation, error)
 }
+
+type ListingUnavailableError struct {
+	Evidence string
+}
+
+func (e *ListingUnavailableError) Error() string {
+	return e.Evidence
+}

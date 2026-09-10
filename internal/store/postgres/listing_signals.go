@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
@@ -89,6 +90,9 @@ func (s *Store) ReusablePhotoFingerprints(ctx context.Context, listingID int64) 
 }
 
 func (s *Store) CompleteListingSignalJob(ctx context.Context, job domain.ListingSignalJob, signals domain.ListingSignals) error {
+	if signals.Availability != nil && (!signals.Availability.Status.Valid() || signals.Availability.Evidence == "") {
+		return fmt.Errorf("invalid signal availability observation")
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -104,6 +108,18 @@ func (s *Store) CompleteListingSignalJob(ctx context.Context, job domain.Listing
 			return err
 		}
 		return tx.Commit(ctx)
+	}
+	if signals.Availability != nil {
+		var previous string
+		if err := tx.QueryRow(ctx, `SELECT availability_status FROM listings WHERE id=$1 FOR UPDATE`, job.Listing.ID).Scan(&previous); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE listings SET availability_status=$1,availability_changed_at=CASE WHEN availability_status<>$1 THEN $2 ELSE availability_changed_at END WHERE id=$3`, signals.Availability.Status, now, job.Listing.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO listing_availability_observations(listing_id,status,previous_status,observed_at,observation_kind,evidence,is_transition) VALUES($1,$2,$3,$4,'provider_check',$5,$3<>$2)`, job.Listing.ID, signals.Availability.Status, previous, now, signals.Availability.Evidence); err != nil {
+			return err
+		}
 	}
 
 	photoJSON, err := json.Marshal(signals.Listing.PhotoURLs)

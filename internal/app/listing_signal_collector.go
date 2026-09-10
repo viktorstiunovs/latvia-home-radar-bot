@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -70,12 +71,16 @@ func (c *ListingSignalCollector) process(ctx context.Context, job domain.Listing
 		return
 	}
 	enriched := job.Listing
+	var unavailable *provider.ListingUnavailableError
 	if !enriched.DetailsEnriched || enriched.Description == "" {
 		var err error
 		enriched, err = source.Enrich(ctx, job.Listing)
 		if err != nil {
-			c.retry(ctx, job, fmt.Errorf("enrich listing: %w", err))
-			return
+			if !errors.As(err, &unavailable) {
+				c.retry(ctx, job, fmt.Errorf("enrich listing: %w", err))
+				return
+			}
+			enriched = job.Listing
 		}
 	}
 	if enriched.Description == "" {
@@ -87,21 +92,27 @@ func (c *ListingSignalCollector) process(ctx context.Context, job domain.Listing
 	if len(photoURLs) == 0 && enriched.ImageURL != "" {
 		photoURLs = []string{enriched.ImageURL}
 	}
-	reusable, err := c.store.ReusablePhotoFingerprints(ctx, job.Listing.ID)
-	if err != nil {
-		c.retry(ctx, job, fmt.Errorf("load reusable photo fingerprints: %w", err))
-		return
-	}
-	photos, err := identity.FingerprintPhotosWithReuse(ctx, c.http, enriched.Source, photoURLs, c.photoLimit, reusable)
-	if err != nil {
-		c.retry(ctx, job, err)
-		return
+	var photos []domain.PhotoFingerprint
+	if unavailable == nil {
+		reusable, err := c.store.ReusablePhotoFingerprints(ctx, job.Listing.ID)
+		if err != nil {
+			c.retry(ctx, job, fmt.Errorf("load reusable photo fingerprints: %w", err))
+			return
+		}
+		photos, err = identity.FingerprintPhotosWithReuse(ctx, c.http, enriched.Source, photoURLs, c.photoLimit, reusable)
+		if err != nil {
+			c.retry(ctx, job, err)
+			return
+		}
 	}
 	signals := domain.ListingSignals{
 		Listing:              enriched,
 		InputHash:            identity.SignalInputHash(enriched, photoURLs),
 		NormalizationVersion: identity.NormalizationVersion,
 		Photos:               photos,
+	}
+	if unavailable != nil {
+		signals.Availability = &domain.AvailabilityObservation{Status: domain.AvailabilityInactive, Evidence: unavailable.Evidence}
 	}
 	if err := c.store.CompleteListingSignalJob(ctx, job, signals); err != nil {
 		c.retry(ctx, job, fmt.Errorf("complete listing signals: %w", err))

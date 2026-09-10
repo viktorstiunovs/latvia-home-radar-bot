@@ -71,8 +71,11 @@ func (s *Source) FetchRecent(ctx context.Context) ([]domain.Listing, error) {
 
 func (s *Source) Enrich(ctx context.Context, listing domain.Listing) (domain.Listing, error) {
 	var payload map[string]any
-	_, err := s.getJSON(ctx, apiURL+"/realties/"+url.PathEscape(listing.ExternalID), &payload)
+	response, err := s.getJSON(ctx, apiURL+"/realties/"+url.PathEscape(listing.ExternalID), &payload)
 	if err != nil {
+		if response != nil && (response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone) {
+			return listing, &provider.ListingUnavailableError{Evidence: fmt.Sprintf("City24 HTTP %d", response.StatusCode)}
+		}
 		return listing, err
 	}
 	detailed, err := ParseOffer(payload, s.deal, s.property)

@@ -11,6 +11,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - Coalesced overlapping saved-filter matches so each user receives at most one
   alert per listing event while separate users remain independently notified.
+- Completed signal jobs for City24 adverts removed during enrichment, retaining
+  inactive evidence and allowing property resolution to progress without
+  repeated HTTP 404/410 retries.
 
 ## [1.0.0] - 2026-09-09
 

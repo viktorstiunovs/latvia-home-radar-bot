@@ -491,6 +491,42 @@ func TestListingSignalJobsRetainImmutableSnapshotsAndRetryAtomically(t *testing.
 	if outcome != "failed" || !strings.Contains(lastError, "invalid test fingerprint") {
 		t.Fatalf("failed attempt = %q/%q", outcome, lastError)
 	}
+
+	removed := domain.Listing{Source: "city24.lv", ExternalID: "signals-gone", URL: "https://www.city24.lv/real-estate/signals-gone", DealType: domain.DealSale, PropertyType: domain.PropertyApartment, Title: "Removed listing", PriceEUR: intPointer(90000), Address: "Dzirnavu iela 10", PhotoURLs: []string{"https://static.img-city24.lv/removed.jpg"}}
+	if result, err := store.ProcessDiscovered(ctx, "city24.lv:latvia:apartments:sale", []domain.Listing{removed}, false); err != nil || result.Inserted != 1 {
+		t.Fatalf("removed listing discovery=%+v err=%v", result, err)
+	}
+	jobs, err = store.ClaimListingSignalJobs(ctx, 1)
+	if err != nil || len(jobs) != 1 || jobs[0].Listing.ExternalID != removed.ExternalID {
+		t.Fatalf("removed listing signal job=%+v err=%v", jobs, err)
+	}
+	removedJob := jobs[0]
+	removedJob.Listing.NormalizedAddress = "dzirnavu iela 10"
+	removedSignals := domain.ListingSignals{
+		Listing:              removedJob.Listing,
+		InputHash:            strings.Repeat("e", 64),
+		NormalizationVersion: "text-nfkd-v1",
+		Availability:         &domain.AvailabilityObservation{Status: domain.AvailabilityInactive, Evidence: "City24 HTTP 410"},
+	}
+	if err := store.CompleteListingSignalJob(ctx, removedJob, removedSignals); err != nil {
+		t.Fatal(err)
+	}
+	var removedAvailability, removedSignalStatus, removedAttemptOutcome string
+	var removedSnapshots, removedFingerprints, removedResolutionJobs int
+	if err := store.pool.QueryRow(ctx, `SELECT l.availability_status,j.status,a.outcome,(SELECT count(*) FROM listing_signal_snapshots s WHERE s.listing_id=l.id),(SELECT count(*) FROM listing_photo_fingerprints p WHERE p.listing_id=l.id),(SELECT count(*) FROM duplicate_resolution_jobs r JOIN listing_signal_snapshots s ON s.id=r.snapshot_id WHERE s.listing_id=l.id) FROM listings l JOIN listing_signal_jobs j ON j.listing_id=l.id JOIN listing_signal_attempts a ON a.listing_id=l.id WHERE l.id=$1 ORDER BY a.id DESC LIMIT 1`, removedJob.Listing.ID).Scan(&removedAvailability, &removedSignalStatus, &removedAttemptOutcome, &removedSnapshots, &removedFingerprints, &removedResolutionJobs); err != nil {
+		t.Fatal(err)
+	}
+	if removedAvailability != string(domain.AvailabilityInactive) || removedSignalStatus != "completed" || removedAttemptOutcome != "completed" || removedSnapshots != 1 || removedFingerprints != 0 || removedResolutionJobs != 1 {
+		t.Fatalf("removed listing state availability=%s job=%s attempt=%s snapshots=%d fingerprints=%d resolution_jobs=%d", removedAvailability, removedSignalStatus, removedAttemptOutcome, removedSnapshots, removedFingerprints, removedResolutionJobs)
+	}
+	var observationStatus, observationKind, evidence string
+	var transitioned bool
+	if err := store.pool.QueryRow(ctx, `SELECT status,observation_kind,evidence,is_transition FROM listing_availability_observations WHERE listing_id=$1 ORDER BY observed_at DESC,id DESC LIMIT 1`, removedJob.Listing.ID).Scan(&observationStatus, &observationKind, &evidence, &transitioned); err != nil {
+		t.Fatal(err)
+	}
+	if observationStatus != string(domain.AvailabilityInactive) || observationKind != "provider_check" || evidence != "City24 HTTP 410" || !transitioned {
+		t.Fatalf("removed listing observation=%s/%s/%q transition=%t", observationStatus, observationKind, evidence, transitioned)
+	}
 }
 
 func TestShadowDuplicateResolutionRetainsDecisionsAndMembershipCorrections(t *testing.T) {

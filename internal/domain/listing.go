@@ -201,6 +201,7 @@ type ListingSignals struct {
 	InputHash            string
 	NormalizationVersion string
 	Photos               []PhotoFingerprint
+	Availability         *AvailabilityObservation
 }
 
 type AvailabilityStatus string
