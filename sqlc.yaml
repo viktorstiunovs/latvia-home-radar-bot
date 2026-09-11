@@ -1,0 +1,32 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/store/postgres/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/store/postgres/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+        emit_json_tags: true
+        initialisms:
+          - "id"
+          - "url"
+        rename:
+          photo_urls: "PhotoURLs"
+          raw_json: "RawJSON"
+          price_eur: "PriceEUR"
+          previous_price_eur: "PreviousPriceEUR"
+          current_price_eur: "CurrentPriceEUR"
+          event_price_eur: "EventPriceEUR"
+          last_known_price_eur: "LastKnownPriceEUR"
+        overrides:
+          - db_type: "pg_catalog.int4"
+            go_type: "int"
+          - db_type: "pg_catalog.int4"
+            nullable: true
+            go_type:
+              type: "int"
+              pointer: true

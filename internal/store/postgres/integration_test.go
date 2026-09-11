@@ -513,7 +513,29 @@ func TestListingSignalJobsRetainImmutableSnapshotsAndRetryAtomically(t *testing.
 	}
 	var removedAvailability, removedSignalStatus, removedAttemptOutcome string
 	var removedSnapshots, removedFingerprints, removedResolutionJobs int
-	if err := store.pool.QueryRow(ctx, `SELECT l.availability_status,j.status,a.outcome,(SELECT count(*) FROM listing_signal_snapshots s WHERE s.listing_id=l.id),(SELECT count(*) FROM listing_photo_fingerprints p WHERE p.listing_id=l.id),(SELECT count(*) FROM duplicate_resolution_jobs r JOIN listing_signal_snapshots s ON s.id=r.snapshot_id WHERE s.listing_id=l.id) FROM listings l JOIN listing_signal_jobs j ON j.listing_id=l.id JOIN listing_signal_attempts a ON a.listing_id=l.id WHERE l.id=$1 ORDER BY a.id DESC LIMIT 1`, removedJob.Listing.ID).Scan(&removedAvailability, &removedSignalStatus, &removedAttemptOutcome, &removedSnapshots, &removedFingerprints, &removedResolutionJobs); err != nil {
+	if err := store.pool.QueryRow(ctx, `
+		SELECT
+			listing.availability_status,
+			signal_job.status,
+			signal_attempt.outcome,
+			(SELECT count(*) FROM listing_signal_snapshots WHERE listing_id = listing.id),
+			(SELECT count(*) FROM listing_photo_fingerprints WHERE listing_id = listing.id),
+			(
+				SELECT count(*)
+				FROM duplicate_resolution_jobs AS resolution_job
+				JOIN listing_signal_snapshots AS snapshot
+				  ON snapshot.id = resolution_job.snapshot_id
+				WHERE snapshot.listing_id = listing.id
+			)
+		FROM listings AS listing
+		JOIN listing_signal_jobs AS signal_job
+		  ON signal_job.listing_id = listing.id
+		JOIN listing_signal_attempts AS signal_attempt
+		  ON signal_attempt.listing_id = listing.id
+		WHERE listing.id = $1
+		ORDER BY signal_attempt.id DESC
+		LIMIT 1
+	`, removedJob.Listing.ID).Scan(&removedAvailability, &removedSignalStatus, &removedAttemptOutcome, &removedSnapshots, &removedFingerprints, &removedResolutionJobs); err != nil {
 		t.Fatal(err)
 	}
 	if removedAvailability != string(domain.AvailabilityInactive) || removedSignalStatus != "completed" || removedAttemptOutcome != "completed" || removedSnapshots != 1 || removedFingerprints != 0 || removedResolutionJobs != 1 {

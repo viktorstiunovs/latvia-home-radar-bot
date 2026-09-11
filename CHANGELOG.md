@@ -14,6 +14,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Completed signal jobs for City24 adverts removed during enrichment, retaining
   inactive evidence and allowing property resolution to progress without
   repeated HTTP 404/410 retries.
+- Moved complex PostgreSQL statements into formatted, named SQL files and
+  generated type-safe `pgx` accessors with a pinned `sqlc` version, while
+  retaining simple inline CRUD queries.
 
 ## [1.0.0] - 2026-09-09
 

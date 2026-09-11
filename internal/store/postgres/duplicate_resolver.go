@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -25,24 +26,14 @@ func (s *Store) ClaimDuplicateResolutionJobs(ctx context.Context, limit int) ([]
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	rows, err := tx.Query(ctx, `SELECT snapshot_id FROM duplicate_resolution_jobs WHERE (status='pending' AND next_attempt_at<=now()) OR (status='processing' AND claimed_at<now()-($1 * interval '1 second')) ORDER BY next_attempt_at,snapshot_id FOR UPDATE SKIP LOCKED LIMIT $2`, int(staleResolutionClaim/time.Second), limit)
+	queries := s.queries.WithTx(tx)
+	snapshotIDs, err := queries.ClaimableDuplicateResolutionSnapshotIDs(ctx, sqlcgen.ClaimableDuplicateResolutionSnapshotIDsParams{
+		StaleSeconds: int(staleResolutionClaim / time.Second),
+		JobLimit:     int32(limit),
+	})
 	if err != nil {
 		return nil, err
 	}
-	var snapshotIDs []int64
-	for rows.Next() {
-		var snapshotID int64
-		if err := rows.Scan(&snapshotID); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		snapshotIDs = append(snapshotIDs, snapshotID)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
 
 	now := time.Now().UTC()
 	result := make([]domain.DuplicateResolutionJob, 0, len(snapshotIDs))
@@ -76,20 +67,19 @@ func (s *Store) DuplicateCandidates(ctx context.Context, evidence domain.Listing
 	if limit > 100 {
 		limit = 100
 	}
-	rows, err := s.pool.Query(ctx, `WITH latest AS (SELECT DISTINCT ON (s.listing_id) s.id,s.listing_id,s.normalized_address,s.structured_facts,s.completed_at FROM listing_signal_snapshots s WHERE s.listing_id<>$1 ORDER BY s.listing_id,s.completed_at DESC,s.id DESC) SELECT id FROM latest WHERE structured_facts->>'property_type'=$2 AND structured_facts->>'deal_type'=$3 AND (($4<>'' AND structured_facts->>'area_key'=$4) OR ($5<>'' AND normalized_address=$5)) AND ($6::integer IS NULL OR structured_facts->>'rooms' IS NULL OR (structured_facts->>'rooms')::integer=$6) AND ($7::double precision IS NULL OR structured_facts->>'area_m2' IS NULL OR abs((structured_facts->>'area_m2')::double precision-$7)<=greatest(5.0,$7*0.08)) AND ($8::integer IS NULL OR structured_facts->>'floor' IS NULL OR (structured_facts->>'floor')::integer=$8) AND ($9::double precision IS NULL OR structured_facts->>'land_area_m2' IS NULL OR abs((structured_facts->>'land_area_m2')::double precision-$9)<=greatest(50.0,$9*0.10)) ORDER BY (normalized_address=$5 AND $5<>'') DESC,completed_at DESC,id DESC LIMIT $10`, evidence.Listing.ID, evidence.Listing.PropertyType, evidence.Listing.DealType, evidence.Listing.AreaKey, evidence.Listing.NormalizedAddress, evidence.Listing.Rooms, evidence.Listing.AreaM2, evidence.Listing.Floor, evidence.Listing.LandAreaM2, limit)
+	snapshotIDs, err := s.queries.FindDuplicateCandidateSnapshotIDs(ctx, sqlcgen.FindDuplicateCandidateSnapshotIDsParams{
+		PropertyType:      string(evidence.Listing.PropertyType),
+		DealType:          string(evidence.Listing.DealType),
+		AreaKey:           evidence.Listing.AreaKey,
+		NormalizedAddress: evidence.Listing.NormalizedAddress,
+		Rooms:             evidence.Listing.Rooms,
+		AreaM2:            evidence.Listing.AreaM2,
+		Floor:             evidence.Listing.Floor,
+		LandAreaM2:        evidence.Listing.LandAreaM2,
+		CandidateLimit:    int32(limit),
+		ListingID:         evidence.Listing.ID,
+	})
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var snapshotIDs []int64
-	for rows.Next() {
-		var snapshotID int64
-		if err := rows.Scan(&snapshotID); err != nil {
-			return nil, err
-		}
-		snapshotIDs = append(snapshotIDs, snapshotID)
-	}
-	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	result := make([]domain.ListingEvidence, 0, len(snapshotIDs))
@@ -109,6 +99,8 @@ func (s *Store) CompleteDuplicateResolutionJob(ctx context.Context, job domain.D
 		return err
 	}
 	defer tx.Rollback(ctx)
+	queries := s.queries.WithTx(tx)
+
 	if err := lockDuplicateResolutionCommit(ctx, tx); err != nil {
 		return err
 	}
@@ -143,7 +135,11 @@ func (s *Store) CompleteDuplicateResolutionJob(ctx context.Context, job domain.D
 			return err
 		}
 	}
-	if _, err := tx.Exec(ctx, `UPDATE listing_availability_jobs SET next_attempt_at='1970-01-01 00:00:00+00',priority_requested=TRUE,updated_at=$1 WHERE status='pending' AND listing_id<>$2 AND listing_id IN (SELECT m.listing_id FROM property_listing_memberships m JOIN listings l ON l.id=m.listing_id WHERE m.property_id=$3 AND m.valid_to IS NULL AND l.availability_status<>'inactive')`, now, job.Evidence.Listing.ID, currentProperty); err != nil {
+	if err := queries.PrioritizePropertyAvailabilityChecks(ctx, sqlcgen.PrioritizePropertyAvailabilityChecksParams{
+		UpdatedAt:         requiredTimestamptz(now),
+		ExcludedListingID: job.Evidence.Listing.ID,
+		PropertyID:        currentProperty,
+	}); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE duplicate_resolution_jobs SET status='completed',attempts=attempts+1,claimed_at=NULL,last_error=NULL,updated_at=$1 WHERE snapshot_id=$2`, now, job.Evidence.SnapshotID); err != nil {
@@ -174,7 +170,16 @@ func (s *Store) RetryDuplicateResolutionJob(ctx context.Context, job domain.Dupl
 		delay = 300
 	}
 	now := time.Now().UTC()
-	if _, err := tx.Exec(ctx, `UPDATE duplicate_resolution_jobs SET status='pending',attempts=attempts+1,next_attempt_at=$1,claimed_at=NULL,last_error=$2,updated_at=$3 WHERE snapshot_id=$4`, now.Add(time.Duration(delay)*time.Second), message, now, job.Evidence.SnapshotID); err != nil {
+	if _, err := tx.Exec(ctx, `
+		UPDATE duplicate_resolution_jobs
+		SET status = 'pending',
+		    attempts = attempts + 1,
+		    next_attempt_at = $1,
+		    claimed_at = NULL,
+		    last_error = $2,
+		    updated_at = $3
+		WHERE snapshot_id = $4
+	`, now.Add(time.Duration(delay)*time.Second), message, now, job.Evidence.SnapshotID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE duplicate_resolution_attempts SET finished_at=$1,outcome='failed',error=$2 WHERE id=$3 AND outcome='processing'`, now, message, job.AttemptID); err != nil {
@@ -265,20 +270,27 @@ type evidenceFacts struct {
 	LandAreaM2     *float64            `json:"land_area_m2"`
 }
 
-type queryRower interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-}
-
-func loadListingEvidence(ctx context.Context, query queryRower, snapshotID int64) (domain.ListingEvidence, error) {
-	var result domain.ListingEvidence
-	var factsJSON []byte
-	err := query.QueryRow(ctx, `SELECT s.id,s.completed_at,s.description,s.normalized_address,s.normalized_description,s.structured_facts,l.id,l.source,l.external_id,l.url FROM listing_signal_snapshots s JOIN listings l ON l.id=s.listing_id WHERE s.id=$1`, snapshotID).Scan(&result.SnapshotID, &result.CompletedAt, &result.Listing.Description, &result.Listing.NormalizedAddress, &result.Listing.NormalizedDescription, &factsJSON, &result.Listing.ID, &result.Listing.Source, &result.Listing.ExternalID, &result.Listing.URL)
+func loadListingEvidence(ctx context.Context, db sqlcgen.DBTX, snapshotID int64) (domain.ListingEvidence, error) {
+	queries := sqlcgen.New(db)
+	row, err := queries.LoadListingEvidence(ctx, snapshotID)
 	if err != nil {
-		return result, err
+		return domain.ListingEvidence{}, err
+	}
+	result := domain.ListingEvidence{
+		SnapshotID:  row.SnapshotID,
+		CompletedAt: row.CompletedAt.Time,
+		Listing: domain.Listing{
+			ID:                    row.ListingID,
+			Source:                row.Source,
+			ExternalID:            row.ExternalID,
+			URL:                   row.URL,
+			Description:           row.Description,
+			NormalizedAddress:     row.NormalizedAddress,
+			NormalizedDescription: row.NormalizedDescription,
+		},
 	}
 	var facts evidenceFacts
-	if err := json.Unmarshal(factsJSON, &facts); err != nil {
+	if err := json.Unmarshal(row.StructuredFacts, &facts); err != nil {
 		return result, err
 	}
 	result.Listing.PropertyType = facts.PropertyType
@@ -293,19 +305,25 @@ func loadListingEvidence(ctx context.Context, query queryRower, snapshotID int64
 	result.Listing.BuildingSeries = facts.BuildingSeries
 	result.Listing.BuildingType = facts.BuildingType
 	result.Listing.LandAreaM2 = facts.LandAreaM2
-	rows, err := query.Query(ctx, `SELECT position,source_url,exact_hash,exact_algorithm,perceptual_hash,perceptual_algorithm,media_type,byte_size,width,height FROM listing_photo_fingerprints WHERE snapshot_id=$1 ORDER BY position`, snapshotID)
+	photos, err := queries.ListSnapshotPhotoFingerprints(ctx, snapshotID)
 	if err != nil {
 		return result, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var photo domain.PhotoFingerprint
-		if err := rows.Scan(&photo.Position, &photo.SourceURL, &photo.ExactHash, &photo.ExactAlgorithm, &photo.PerceptualHash, &photo.PerceptualAlgorithm, &photo.MediaType, &photo.ByteSize, &photo.Width, &photo.Height); err != nil {
-			return result, err
-		}
-		result.Photos = append(result.Photos, photo)
+	for _, photo := range photos {
+		result.Photos = append(result.Photos, domain.PhotoFingerprint{
+			Position:            int(photo.Position),
+			SourceURL:           photo.SourceURL,
+			ExactHash:           photo.ExactHash,
+			ExactAlgorithm:      photo.ExactAlgorithm,
+			PerceptualHash:      photo.PerceptualHash,
+			PerceptualAlgorithm: photo.PerceptualAlgorithm,
+			MediaType:           photo.MediaType,
+			ByteSize:            photo.ByteSize,
+			Width:               photo.Width,
+			Height:              photo.Height,
+		})
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func lockDuplicateResolutionCommit(ctx context.Context, tx pgx.Tx) error {
@@ -324,10 +342,18 @@ func insertDuplicateDecision(ctx context.Context, tx pgx.Tx, current domain.List
 	if err != nil {
 		return 0, "", err
 	}
-	var decisionID int64
-	var status string
-	err = tx.QueryRow(ctx, `INSERT INTO duplicate_decisions(left_listing_id,right_listing_id,left_snapshot_id,right_snapshot_id,rule_version,confidence,automatic_status,status,evidence,evaluated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$7,$8,$9) ON CONFLICT(left_snapshot_id,right_snapshot_id,rule_version) DO UPDATE SET confidence=duplicate_decisions.confidence RETURNING id,status`, left.Listing.ID, right.Listing.ID, left.SnapshotID, right.SnapshotID, decision.RuleVersion, decision.Confidence, decision.Status, evidenceJSON, now).Scan(&decisionID, &status)
-	return decisionID, domain.DuplicateDecisionStatus(status), err
+	row, err := sqlcgen.New(tx).InsertDuplicateDecision(ctx, sqlcgen.InsertDuplicateDecisionParams{
+		LeftListingID:   left.Listing.ID,
+		RightListingID:  right.Listing.ID,
+		LeftSnapshotID:  left.SnapshotID,
+		RightSnapshotID: right.SnapshotID,
+		RuleVersion:     decision.RuleVersion,
+		Confidence:      decision.Confidence,
+		DecisionStatus:  string(decision.Status),
+		Evidence:        evidenceJSON,
+		EvaluatedAt:     requiredTimestamptz(now),
+	})
+	return row.ID, domain.DuplicateDecisionStatus(row.Status), err
 }
 
 func ensureListingProperty(ctx context.Context, tx pgx.Tx, listingID int64, decisionID *int64, reason string, now time.Time) (int64, error) {

@@ -6,10 +6,15 @@ import (
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool    *pgxpool.Pool
+	queries *sqlcgen.Queries
+}
 
 func Open(ctx context.Context, databaseURL string, attempts int) (*Store, error) {
 	if attempts < 1 {
@@ -42,7 +47,10 @@ func Open(ctx context.Context, databaseURL string, attempts int) (*Store, error)
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{pool: pool}
+	store := &Store{
+		pool:    pool,
+		queries: sqlcgen.New(pool),
+	}
 	if err := store.seedAreas(ctx); err != nil {
 		pool.Close()
 		return nil, err
@@ -52,6 +60,26 @@ func Open(ctx context.Context, databaseURL string, attempts int) (*Store, error)
 
 func (s *Store) Close() {
 	s.pool.Close()
+}
+
+func requiredTimestamptz(value time.Time) pgtype.Timestamptz {
+	return pgtype.Timestamptz{Time: value, Valid: true}
+}
+
+func optionalTimestamptz(value *time.Time) pgtype.Timestamptz {
+	if value == nil {
+		return pgtype.Timestamptz{}
+	}
+
+	return requiredTimestamptz(*value)
+}
+
+func optionalTime(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+
+	return &value.Time
 }
 
 func (s *Store) seedAreas(ctx context.Context) error {

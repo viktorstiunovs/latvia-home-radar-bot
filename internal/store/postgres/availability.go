@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
 )
 
 const staleAvailabilityClaim = 10 * time.Minute
@@ -23,30 +24,26 @@ func (s *Store) ClaimAvailabilityJobs(ctx context.Context, limit int, staleAfter
 	}
 	defer tx.Rollback(ctx)
 	now := time.Now().UTC()
-	if _, err := tx.Exec(ctx, `UPDATE listing_availability_attempts a SET finished_at=$1,outcome='failed',error='worker claim expired' FROM listing_availability_jobs j WHERE a.listing_id=j.listing_id AND a.outcome='processing' AND j.status='processing' AND j.claimed_at<$1::timestamptz-($2 * interval '1 second')`, now, int(staleAvailabilityClaim/time.Second)); err != nil {
+	queries := s.queries.WithTx(tx)
+	if err := queries.ExpireStaleAvailabilityAttempts(ctx, sqlcgen.ExpireStaleAvailabilityAttemptsParams{
+		ExpiredAt:    requiredTimestamptz(now),
+		StaleSeconds: int(staleAvailabilityClaim / time.Second),
+	}); err != nil {
 		return nil, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE listing_availability_jobs SET status='pending',claimed_at=NULL,updated_at=$1 WHERE status='processing' AND claimed_at<$1::timestamptz-($2 * interval '1 second')`, now, int(staleAvailabilityClaim/time.Second)); err != nil {
+	if err := queries.ReleaseStaleAvailabilityJobs(ctx, sqlcgen.ReleaseStaleAvailabilityJobsParams{
+		ReleasedAt:   requiredTimestamptz(now),
+		StaleSeconds: int(staleAvailabilityClaim / time.Second),
+	}); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT j.listing_id FROM listing_availability_jobs j JOIN listings l ON l.id=j.listing_id WHERE j.status='pending' AND j.next_attempt_at<=now() AND l.availability_status<>'inactive' AND (j.priority_requested OR l.availability_status='unknown' OR l.last_seen_at<=now()-($1 * interval '1 second')) ORDER BY j.priority_requested DESC,j.next_attempt_at,j.listing_id FOR UPDATE OF j SKIP LOCKED LIMIT $2`, int(staleAfter/time.Second), limit)
+	listingIDs, err := queries.ClaimableAvailabilityListingIDs(ctx, sqlcgen.ClaimableAvailabilityListingIDsParams{
+		StaleSeconds: int(staleAfter / time.Second),
+		JobLimit:     int32(limit),
+	})
 	if err != nil {
 		return nil, err
 	}
-	var listingIDs []int64
-	for rows.Next() {
-		var listingID int64
-		if err := rows.Scan(&listingID); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		listingIDs = append(listingIDs, listingID)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
-	}
-	rows.Close()
 
 	result := make([]domain.AvailabilityJob, 0, len(listingIDs))
 	for _, listingID := range listingIDs {
@@ -87,10 +84,25 @@ func (s *Store) CompleteAvailabilityJob(ctx context.Context, job domain.Availabi
 		return err
 	}
 	now := time.Now().UTC()
-	if _, err := tx.Exec(ctx, `UPDATE listings SET availability_status=$1,last_seen_at=CASE WHEN $1='active' THEN $2 ELSE last_seen_at END,availability_changed_at=CASE WHEN availability_status<>$1 THEN $2 ELSE availability_changed_at END WHERE id=$3`, observation.Status, now, job.Listing.ID); err != nil {
+	if _, err := tx.Exec(ctx, `
+		UPDATE listings
+		SET availability_status = $1,
+		    last_seen_at = CASE WHEN $1 = 'active' THEN $2 ELSE last_seen_at END,
+		    availability_changed_at = CASE
+		        WHEN availability_status <> $1 THEN $2
+		        ELSE availability_changed_at
+		    END
+		WHERE id = $3
+	`, observation.Status, now, job.Listing.ID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO listing_availability_observations(listing_id,status,previous_status,observed_at,observation_kind,evidence,is_transition) VALUES($1,$2,$3,$4,'provider_check',$5,$3<>$2)`, job.Listing.ID, observation.Status, previous, now, observation.Evidence); err != nil {
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO listing_availability_observations (
+			listing_id, status, previous_status, observed_at,
+			observation_kind, evidence, is_transition
+		)
+		VALUES ($1, $2, $3, $4, 'provider_check', $5, $3 <> $2)
+	`, job.Listing.ID, observation.Status, previous, now, observation.Evidence); err != nil {
 		return err
 	}
 	nextAttempt := now.Add(availabilityActiveDelay(interval))
@@ -99,7 +111,17 @@ func (s *Store) CompleteAvailabilityJob(ctx context.Context, job domain.Availabi
 		nextAttempt = now.Add(availabilityUnknownDelay(interval, attempts))
 		nextAttempts = attempts + 1
 	}
-	if _, err := tx.Exec(ctx, `UPDATE listing_availability_jobs SET status='pending',attempts=$1,next_attempt_at=$2,claimed_at=NULL,last_error=NULL,priority_requested=FALSE,updated_at=$3 WHERE listing_id=$4`, nextAttempts, nextAttempt, now, job.Listing.ID); err != nil {
+	if _, err := tx.Exec(ctx, `
+		UPDATE listing_availability_jobs
+		SET status = 'pending',
+		    attempts = $1,
+		    next_attempt_at = $2,
+		    claimed_at = NULL,
+		    last_error = NULL,
+		    priority_requested = FALSE,
+		    updated_at = $3
+		WHERE listing_id = $4
+	`, nextAttempts, nextAttempt, now, job.Listing.ID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE listing_availability_attempts SET finished_at=$1,outcome=$2,evidence=$3,error=NULL WHERE id=$4 AND outcome='processing'`, now, observation.Status, observation.Evidence, job.AttemptID); err != nil {
@@ -150,7 +172,16 @@ func (s *Store) RetryAvailabilityJob(ctx context.Context, job domain.Availabilit
 		delay = 3600
 	}
 	now := time.Now().UTC()
-	if _, err := tx.Exec(ctx, `UPDATE listing_availability_jobs SET status='pending',attempts=attempts+1,next_attempt_at=$1,claimed_at=NULL,last_error=$2,updated_at=$3 WHERE listing_id=$4`, now.Add(time.Duration(delay)*time.Second), message, now, job.Listing.ID); err != nil {
+	if _, err := tx.Exec(ctx, `
+		UPDATE listing_availability_jobs
+		SET status = 'pending',
+		    attempts = attempts + 1,
+		    next_attempt_at = $1,
+		    claimed_at = NULL,
+		    last_error = $2,
+		    updated_at = $3
+		WHERE listing_id = $4
+	`, now.Add(time.Duration(delay)*time.Second), message, now, job.Listing.ID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE listing_availability_attempts SET finished_at=$1,outcome='failed',error=$2 WHERE id=$3 AND outcome='processing'`, now, message, job.AttemptID); err != nil {

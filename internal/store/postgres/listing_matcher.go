@@ -8,6 +8,7 @@ import (
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
 	"github.com/clive00lewis/latvia-home-radar/internal/events"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
 )
 
 const listingMatcherConsumer = "alert-matcher.v1"
@@ -27,6 +28,8 @@ func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64,
 		return 0, err
 	}
 	defer tx.Rollback(ctx)
+	queries := s.queries.WithTx(tx)
+
 	tag, err := tx.Exec(ctx, `INSERT INTO consumed_events(consumer_name,event_id,consumed_at) VALUES($1,$2::uuid,$3) ON CONFLICT DO NOTHING`, listingMatcherConsumer, eventID, time.Now().UTC())
 	if err != nil {
 		return 0, err
@@ -60,11 +63,19 @@ func (s *Store) matchEvent(ctx context.Context, eventID string, listingID int64,
 	}
 	created := 0
 	for _, filter := range matchingFiltersByUser(filters, listing, occurredAt) {
-		tag, err := tx.Exec(ctx, `INSERT INTO notifications(filter_id,listing_id,trigger_event_id,notification_type,previous_price_eur,current_price_eur,listing_snapshot,status,next_attempt_at) VALUES($1,$2,$3::uuid,$4,$5,$6,$7,'pending',now()) ON CONFLICT(filter_id,trigger_event_id) DO NOTHING`, filter.ID, listingID, eventID, notificationType, previousPriceEUR, currentPriceEUR, listingJSON)
+		inserted, err := queries.InsertMatchedNotification(ctx, sqlcgen.InsertMatchedNotificationParams{
+			FilterID:         filter.ID,
+			ListingID:        listingID,
+			EventID:          eventID,
+			NotificationType: string(notificationType),
+			PreviousPriceEUR: previousPriceEUR,
+			CurrentPriceEUR:  currentPriceEUR,
+			ListingSnapshot:  listingJSON,
+		})
 		if err != nil {
 			return 0, err
 		}
-		created += int(tag.RowsAffected())
+		created += int(inserted)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
@@ -100,26 +111,52 @@ func matchingFiltersByUser(filters []domain.SearchFilter, listing domain.Listing
 	return result
 }
 
-func loadListing(ctx context.Context, tx queryRower, listingID int64) (domain.Listing, error) {
-	var listing domain.Listing
-	var property, deal string
-	var photoJSON []byte
-	err := tx.QueryRow(ctx, `SELECT l.id,l.source,l.external_id,l.url,l.property_type,l.deal_type,l.title,l.description,l.normalized_address,l.normalized_description,l.price_eur,l.rooms,l.area_m2,COALESCE(l.city,''),COALESCE(l.district,''),COALESCE(l.address,''),l.floor,l.total_floors,COALESCE(l.building_series,''),COALESCE(l.building_type,''),l.land_area_m2,l.details_enriched,l.published_at,COALESCE(l.image_url,''),l.photo_urls,COALESCE(a.key,''),COALESCE(a.name,''),COALESCE(a.type,''),COALESCE(parent.key,''),COALESCE(parent.name,''),COALESCE(sa.external_key,''),COALESCE(sa.raw_name,''),l.availability_status,l.first_seen_at,l.last_seen_at,l.availability_changed_at FROM listings l LEFT JOIN areas a ON a.id=l.area_id LEFT JOIN areas parent ON parent.id=a.parent_id LEFT JOIN source_areas sa ON sa.id=l.source_area_id WHERE l.id=$1`, listingID).Scan(
-		&listing.ID, &listing.Source, &listing.ExternalID, &listing.URL, &property, &deal, &listing.Title, &listing.Description, &listing.NormalizedAddress, &listing.NormalizedDescription,
-		&listing.PriceEUR, &listing.Rooms, &listing.AreaM2, &listing.City, &listing.District, &listing.Address,
-		&listing.Floor, &listing.TotalFloors, &listing.BuildingSeries, &listing.BuildingType, &listing.LandAreaM2,
-		&listing.DetailsEnriched, &listing.PublishedAt, &listing.ImageURL, &photoJSON, &listing.AreaKey,
-		&listing.AreaName, &listing.AreaType, &listing.AreaParentKey, &listing.AreaParentName,
-		&listing.SourceAreaKey, &listing.SourceAreaName, &listing.AvailabilityStatus, &listing.FirstSeenAt,
-		&listing.LastSeenAt, &listing.AvailabilityChangedAt,
-	)
+func loadListing(ctx context.Context, db sqlcgen.DBTX, listingID int64) (domain.Listing, error) {
+	row, err := sqlcgen.New(db).LoadListing(ctx, listingID)
 	if err != nil {
 		return domain.Listing{}, err
 	}
-	listing.PropertyType = domain.PropertyType(property)
-	listing.DealType = domain.DealType(deal)
-	if err := json.Unmarshal(photoJSON, &listing.PhotoURLs); err != nil {
+
+	listing := domain.Listing{
+		ID:                    row.ID,
+		Source:                row.Source,
+		ExternalID:            row.ExternalID,
+		URL:                   row.URL,
+		PropertyType:          domain.PropertyType(row.PropertyType),
+		DealType:              domain.DealType(row.DealType),
+		Title:                 row.Title,
+		Description:           row.Description,
+		NormalizedAddress:     row.NormalizedAddress,
+		NormalizedDescription: row.NormalizedDescription,
+		PriceEUR:              row.PriceEUR,
+		Rooms:                 row.Rooms,
+		AreaM2:                row.AreaM2,
+		City:                  row.City,
+		District:              row.District,
+		Address:               row.Address,
+		Floor:                 row.Floor,
+		TotalFloors:           row.TotalFloors,
+		BuildingSeries:        row.BuildingSeries,
+		BuildingType:          row.BuildingType,
+		LandAreaM2:            row.LandAreaM2,
+		DetailsEnriched:       row.DetailsEnriched,
+		PublishedAt:           optionalTime(row.PublishedAt),
+		ImageURL:              row.ImageURL,
+		AreaKey:               row.AreaKey,
+		AreaName:              row.AreaName,
+		AreaType:              row.AreaType,
+		AreaParentKey:         row.AreaParentKey,
+		AreaParentName:        row.AreaParentName,
+		SourceAreaKey:         row.SourceAreaKey,
+		SourceAreaName:        row.SourceAreaName,
+		AvailabilityStatus:    domain.AvailabilityStatus(row.AvailabilityStatus),
+		FirstSeenAt:           row.FirstSeenAt.Time,
+		LastSeenAt:            row.LastSeenAt.Time,
+		AvailabilityChangedAt: row.AvailabilityChangedAt.Time,
+	}
+	if err := json.Unmarshal(row.PhotoURLs, &listing.PhotoURLs); err != nil {
 		return domain.Listing{}, err
 	}
+
 	return listing, nil
 }

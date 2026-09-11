@@ -6,12 +6,20 @@ import (
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
 )
 
 func (s *Store) UpsertUser(ctx context.Context, telegramUserID, chatID int64, name, languageTag string) (domain.User, error) {
 	var user domain.User
-	err := s.pool.QueryRow(ctx, `INSERT INTO users(telegram_user_id,chat_id,name,language_tag,created_at) VALUES($1,$2,NULLIF($3,''),COALESCE(NULLIF($4,''),'en'),$5) ON CONFLICT(telegram_user_id) DO UPDATE SET chat_id=excluded.chat_id,name=COALESCE(excluded.name,users.name) RETURNING id,language_tag`, telegramUserID, chatID, name, languageTag, time.Now().UTC()).Scan(&user.ID, &user.LanguageTag)
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO users (telegram_user_id, chat_id, name, language_tag, created_at)
+		VALUES ($1, $2, nullif($3, ''), coalesce(nullif($4, ''), 'en'), $5)
+		ON CONFLICT (telegram_user_id) DO UPDATE
+		SET chat_id = excluded.chat_id,
+		    name = coalesce(excluded.name, users.name)
+		RETURNING id, language_tag
+	`, telegramUserID, chatID, name, languageTag, time.Now().UTC()).Scan(&user.ID, &user.LanguageTag)
 	return user, err
 }
 
@@ -94,7 +102,23 @@ func (s *Store) CreateFilter(ctx context.Context, filter domain.SearchFilter) (i
 	}
 	defer tx.Rollback(ctx)
 	var id int64
-	err = tx.QueryRow(ctx, `INSERT INTO filters(user_id,enabled,deal_type,property_types,price_min,price_max,rooms_min,rooms_max,area_min,area_max,activated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, filter.UserID, true, filter.DealType, properties, filter.PriceMin, filter.PriceMax, filter.RoomsMin, filter.RoomsMax, filter.AreaMin, filter.AreaMax, activated).Scan(&id)
+	err = tx.QueryRow(ctx, `
+		INSERT INTO filters (
+			user_id,
+			enabled,
+			deal_type,
+			property_types,
+			price_min,
+			price_max,
+			rooms_min,
+			rooms_max,
+			area_min,
+			area_max,
+			activated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id
+	`, filter.UserID, true, filter.DealType, properties, filter.PriceMin, filter.PriceMax, filter.RoomsMin, filter.RoomsMax, filter.AreaMin, filter.AreaMax, activated).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -114,26 +138,30 @@ func (s *Store) CreateFilter(ctx context.Context, filter domain.SearchFilter) (i
 }
 
 func (s *Store) ListFilters(ctx context.Context, telegramUserID int64) ([]domain.SavedFilter, error) {
-	rows, err := s.pool.Query(ctx, `SELECT f.id,f.deal_type,f.property_types,f.price_min,f.price_max,f.rooms_min,f.rooms_max,f.area_min,f.area_max,f.enabled,COALESCE(array_agg(CASE WHEN parent.name IS NULL THEN a.name ELSE a.name||' ('||parent.name||')' END ORDER BY a.key) FILTER (WHERE a.id IS NOT NULL),'{}') FROM filters f JOIN users u ON u.id=f.user_id LEFT JOIN filter_areas fa ON fa.filter_id=f.id LEFT JOIN areas a ON a.id=fa.area_id LEFT JOIN areas parent ON parent.id=a.parent_id WHERE u.telegram_user_id=$1 GROUP BY f.id ORDER BY f.id`, telegramUserID)
+	rows, err := s.queries.ListSavedFilters(ctx, telegramUserID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []domain.SavedFilter
-	for rows.Next() {
-		var item domain.SavedFilter
-		var deal string
-		var properties []string
-		if err := rows.Scan(&item.ID, &deal, &properties, &item.PriceMin, &item.PriceMax, &item.RoomsMin, &item.RoomsMax, &item.AreaMin, &item.AreaMax, &item.Enabled, &item.AreaLabels); err != nil {
-			return nil, err
+	result := make([]domain.SavedFilter, 0, len(rows))
+	for _, row := range rows {
+		item := domain.SavedFilter{
+			ID:         row.ID,
+			DealType:   domain.DealType(row.DealType),
+			PriceMin:   row.PriceMin,
+			PriceMax:   row.PriceMax,
+			RoomsMin:   row.RoomsMin,
+			RoomsMax:   row.RoomsMax,
+			AreaMin:    row.AreaMin,
+			AreaMax:    row.AreaMax,
+			Enabled:    row.Enabled,
+			AreaLabels: row.AreaLabels,
 		}
-		item.DealType = domain.DealType(deal)
-		for _, p := range properties {
+		for _, p := range row.PropertyTypes {
 			item.PropertyTypes = append(item.PropertyTypes, domain.PropertyType(p))
 		}
 		result = append(result, item)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func (s *Store) SetFilterEnabled(ctx context.Context, telegramUserID, filterID int64, enabled bool) (bool, error) {
@@ -163,27 +191,31 @@ func (s *Store) DeleteFilter(ctx context.Context, telegramUserID, filterID int64
 }
 
 func loadFilters(ctx context.Context, tx pgx.Tx) ([]domain.SearchFilter, error) {
-	rows, err := tx.Query(ctx, `SELECT f.id,f.user_id,f.deal_type,f.property_types,f.price_min,f.price_max,f.rooms_min,f.rooms_max,f.area_min,f.area_max,f.activated_at,COALESCE(array_agg(a.key ORDER BY a.key) FILTER(WHERE a.id IS NOT NULL),'{}') FROM filters f LEFT JOIN filter_areas fa ON fa.filter_id=f.id LEFT JOIN areas a ON a.id=fa.area_id WHERE f.enabled=TRUE GROUP BY f.id`)
+	rows, err := sqlcgen.New(tx).ListEnabledFilters(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []domain.SearchFilter
-	for rows.Next() {
-		var f domain.SearchFilter
-		var deal string
-		var props []string
-		var activated time.Time
-		if err := rows.Scan(&f.ID, &f.UserID, &deal, &props, &f.PriceMin, &f.PriceMax, &f.RoomsMin, &f.RoomsMax, &f.AreaMin, &f.AreaMax, &activated, &f.AreaKeys); err != nil {
-			return nil, err
+	result := make([]domain.SearchFilter, 0, len(rows))
+	for _, row := range rows {
+		activated := row.ActivatedAt.Time
+		filter := domain.SearchFilter{
+			ID:          row.ID,
+			UserID:      row.UserID,
+			DealType:    domain.DealType(row.DealType),
+			PriceMin:    row.PriceMin,
+			PriceMax:    row.PriceMax,
+			RoomsMin:    row.RoomsMin,
+			RoomsMax:    row.RoomsMax,
+			AreaMin:     row.AreaMin,
+			AreaMax:     row.AreaMax,
+			Enabled:     true,
+			ActivatedAt: &activated,
+			AreaKeys:    row.AreaKeys,
 		}
-		f.DealType = domain.DealType(deal)
-		for _, p := range props {
-			f.PropertyTypes = append(f.PropertyTypes, domain.PropertyType(p))
+		for _, p := range row.PropertyTypes {
+			filter.PropertyTypes = append(filter.PropertyTypes, domain.PropertyType(p))
 		}
-		f.Enabled = true
-		f.ActivatedAt = &activated
-		result = append(result, f)
+		result = append(result, filter)
 	}
-	return result, rows.Err()
+	return result, nil
 }

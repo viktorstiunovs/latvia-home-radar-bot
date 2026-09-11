@@ -8,6 +8,7 @@ import (
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
 	"github.com/clive00lewis/latvia-home-radar/internal/events"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -24,6 +25,7 @@ func (s *Store) MatchDuplicateAwareListingEvent(ctx context.Context, eventID str
 		return 0, err
 	}
 	defer tx.Rollback(ctx)
+	queries := s.queries.WithTx(tx)
 
 	propertyID, pendingReason, err := prepareResolvedProperty(ctx, tx, listingID, occurredAt)
 	if err != nil {
@@ -98,11 +100,22 @@ func (s *Store) MatchDuplicateAwareListingEvent(ctx context.Context, eventID str
 		if !decision.Notify {
 			continue
 		}
-		tag, err := tx.Exec(ctx, `INSERT INTO notifications(filter_id,listing_id,trigger_event_id,notification_type,previous_price_eur,current_price_eur,property_id,comparison_listing_id,listing_snapshot,active_alternatives,status,next_attempt_at) VALUES($1,$2,$3::uuid,$4,$5,$6,$7,$8,$9,$10,'pending',now()) ON CONFLICT DO NOTHING`, filter.ID, listingID, eventID, decision.Type, decision.PreviousPriceEUR, listing.PriceEUR, propertyID, decision.ComparisonListingID, listingJSON, alternativesJSON)
+		inserted, err := queries.InsertDuplicateAwareNotification(ctx, sqlcgen.InsertDuplicateAwareNotificationParams{
+			FilterID:            filter.ID,
+			ListingID:           listingID,
+			EventID:             eventID,
+			NotificationType:    string(decision.Type),
+			PreviousPriceEUR:    decision.PreviousPriceEUR,
+			CurrentPriceEUR:     listing.PriceEUR,
+			PropertyID:          &propertyID,
+			ComparisonListingID: decision.ComparisonListingID,
+			ListingSnapshot:     listingJSON,
+			ActiveAlternatives:  alternativesJSON,
+		})
 		if err != nil {
 			return 0, err
 		}
-		created += int(tag.RowsAffected())
+		created += int(inserted)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
@@ -111,8 +124,8 @@ func (s *Store) MatchDuplicateAwareListingEvent(ctx context.Context, eventID str
 }
 
 func prepareResolvedProperty(ctx context.Context, tx pgx.Tx, listingID int64, occurredAt time.Time) (int64, string, error) {
-	var propertyID int64
-	err := tx.QueryRow(ctx, `SELECT m.property_id FROM property_listing_memberships m WHERE m.listing_id=$1 AND m.valid_to IS NULL AND EXISTS (SELECT 1 FROM listing_signal_snapshots s JOIN duplicate_resolution_jobs j ON j.snapshot_id=s.id AND j.status='completed' WHERE s.listing_id=$1)`, listingID).Scan(&propertyID)
+	queries := sqlcgen.New(tx)
+	propertyID, err := queries.ResolvedPropertyIDForListing(ctx, listingID)
 	if err == pgx.ErrNoRows {
 		return 0, fmt.Sprintf("property resolution pending for listing %d", listingID), nil
 	}
@@ -120,8 +133,11 @@ func prepareResolvedProperty(ctx context.Context, tx pgx.Tx, listingID int64, oc
 		return 0, "", err
 	}
 
-	var missingAvailability int
-	err = tx.QueryRow(ctx, `WITH missing AS MATERIALIZED (SELECT other.listing_id FROM property_listing_memberships other JOIN listings other_listing ON other_listing.id=other.listing_id WHERE other.property_id=$1 AND other.valid_to IS NULL AND other.listing_id<>$2 AND other_listing.availability_status<>'inactive' AND NOT EXISTS (SELECT 1 FROM listing_availability_observations o WHERE o.listing_id=other.listing_id AND o.observation_kind='provider_check' AND o.observed_at>=$3)), scheduled AS (INSERT INTO listing_availability_jobs(listing_id,next_attempt_at,priority_requested,created_at,updated_at) SELECT listing_id,now(),TRUE,now(),now() FROM missing ON CONFLICT(listing_id) DO UPDATE SET next_attempt_at=CASE WHEN listing_availability_jobs.status='pending' THEN least(listing_availability_jobs.next_attempt_at,excluded.next_attempt_at) ELSE listing_availability_jobs.next_attempt_at END,priority_requested=CASE WHEN listing_availability_jobs.status='pending' THEN TRUE ELSE listing_availability_jobs.priority_requested END,updated_at=CASE WHEN listing_availability_jobs.status='pending' THEN excluded.updated_at ELSE listing_availability_jobs.updated_at END RETURNING listing_id) SELECT count(*) FROM missing`, propertyID, listingID, occurredAt).Scan(&missingAvailability)
+	missingAvailability, err := queries.ScheduleMissingPropertyAvailabilityChecks(ctx, sqlcgen.ScheduleMissingPropertyAvailabilityChecksParams{
+		PropertyID:        propertyID,
+		ExcludedListingID: listingID,
+		ObservedAt:        requiredTimestamptz(occurredAt),
+	})
 	if err != nil {
 		return 0, "", err
 	}
@@ -132,24 +148,36 @@ func prepareResolvedProperty(ctx context.Context, tx pgx.Tx, listingID int64, oc
 }
 
 func propertyOffersAt(ctx context.Context, tx pgx.Tx, propertyID, excludeListingID int64, occurredAt time.Time) ([]propertyOfferAtEvent, error) {
-	rows, err := tx.Query(ctx, `SELECT l.id,l.source,l.url,event_price.price_eur,last_known.price_eur,l.availability_status,l.first_seen_at FROM property_listing_memberships m JOIN listings l ON l.id=m.listing_id LEFT JOIN LATERAL (SELECT h.price_eur FROM listing_price_history h WHERE h.listing_id=l.id AND h.observed_at<=$3 ORDER BY h.observed_at DESC,h.id DESC LIMIT 1) event_price ON TRUE LEFT JOIN LATERAL (SELECT h.price_eur FROM listing_price_history h WHERE h.listing_id=l.id AND h.observed_at<=$3 AND h.price_eur IS NOT NULL ORDER BY h.observed_at DESC,h.id DESC LIMIT 1) last_known ON TRUE WHERE m.property_id=$1 AND m.valid_to IS NULL AND l.id<>$2 ORDER BY l.first_seen_at DESC,l.id DESC`, propertyID, excludeListingID, occurredAt)
+	queries := sqlcgen.New(tx)
+	rows, err := queries.ListOtherPropertyOffers(ctx, sqlcgen.ListOtherPropertyOffersParams{
+		OccurredAt:        requiredTimestamptz(occurredAt),
+		PropertyID:        propertyID,
+		ExcludedListingID: excludeListingID,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []propertyOfferAtEvent
-	for rows.Next() {
-		var offer propertyOfferAtEvent
-		if err := rows.Scan(&offer.alternative.ListingID, &offer.alternative.Source, &offer.alternative.URL, &offer.alternative.PriceEUR, &offer.lastKnownPrice, &offer.status, &offer.firstSeen); err != nil {
-			return nil, err
+	result := make([]propertyOfferAtEvent, 0, len(rows))
+	for _, row := range rows {
+		offer := propertyOfferAtEvent{
+			alternative: domain.ListingAlternative{
+				ListingID: row.ID,
+				Source:    row.Source,
+				URL:       row.URL,
+				PriceEUR:  row.EventPriceEUR,
+			},
+			status:         domain.AvailabilityStatus(row.AvailabilityStatus),
+			lastKnownPrice: row.LastKnownPriceEUR,
+			firstSeen:      row.FirstSeenAt.Time,
 		}
 		result = append(result, offer)
 	}
-	return result, rows.Err()
+	return result, nil
 }
 
 func propertyWasNotified(ctx context.Context, tx pgx.Tx, propertyID, userID int64) (bool, error) {
-	var result bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM notifications n JOIN filters f ON f.id=n.filter_id JOIN property_listing_memberships m ON m.listing_id=n.listing_id AND m.valid_to IS NULL WHERE f.user_id=$1 AND m.property_id=$2)`, userID, propertyID).Scan(&result)
-	return result, err
+	return sqlcgen.New(tx).UserWasNotifiedAboutProperty(ctx, sqlcgen.UserWasNotifiedAboutPropertyParams{
+		UserID:     userID,
+		PropertyID: propertyID,
+	})
 }

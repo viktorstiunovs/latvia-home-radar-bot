@@ -65,6 +65,9 @@
 - Start infrastructure with `docker compose up -d db rabbitmq`.
 - Run the application with `go run ./cmd/bot`.
 - Run the standard test suite with `go test ./...`.
+- Complex PostgreSQL queries live in `internal/store/postgres/queries`; run
+  `go generate ./internal/store/postgres` after editing them and never edit
+  `internal/store/postgres/sqlcgen` by hand.
 - PostgreSQL integration tests require `TEST_DATABASE_URL` and deliberately
   refuse to truncate a database whose name does not end in `_test`.
 - RabbitMQ integration tests require `TEST_RABBITMQ_URL`. Tests without these

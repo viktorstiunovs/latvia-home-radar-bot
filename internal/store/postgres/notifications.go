@@ -6,44 +6,83 @@ import (
 	"time"
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
 )
 
 func (s *Store) Pending(ctx context.Context, limit int) ([]domain.PendingNotification, error) {
-	rows, err := s.pool.Query(ctx, `SELECT n.id,n.filter_id,n.attempts,n.notification_type,n.previous_price_eur,n.current_price_eur,n.property_id,n.comparison_listing_id,n.listing_snapshot,n.active_alternatives,u.telegram_user_id,COALESCE(u.name,''),u.chat_id,u.language_tag,l.id,l.source,l.external_id,l.url,l.property_type,l.deal_type,l.title,l.price_eur,l.rooms,l.area_m2,COALESCE(l.city,''),COALESCE(l.district,''),COALESCE(l.address,''),l.floor,l.total_floors,COALESCE(l.building_series,''),COALESCE(l.building_type,''),l.land_area_m2,l.details_enriched,l.published_at,COALESCE(l.image_url,''),l.photo_urls,COALESCE(a.key,''),COALESCE(a.name,''),COALESCE(a.type,''),COALESCE(parent.key,''),COALESCE(parent.name,''),COALESCE(sa.external_key,''),COALESCE(sa.raw_name,'') FROM notifications n JOIN filters f ON f.id=n.filter_id JOIN users u ON u.id=f.user_id JOIN listings l ON l.id=n.listing_id LEFT JOIN areas a ON a.id=l.area_id LEFT JOIN areas parent ON parent.id=a.parent_id LEFT JOIN source_areas sa ON sa.id=l.source_area_id WHERE n.status='pending' AND n.next_attempt_at<=now() AND f.enabled=TRUE ORDER BY n.next_attempt_at,n.id LIMIT $1`, limit)
+	rows, err := s.queries.ListPendingNotifications(ctx, int32(limit))
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []domain.PendingNotification
-	for rows.Next() {
-		var n domain.PendingNotification
-		var property, deal, notificationType string
-		var photoJSON, listingJSON, alternativesJSON []byte
-		if err := rows.Scan(&n.ID, &n.FilterID, &n.Attempts, &notificationType, &n.PreviousPriceEUR, &n.CurrentPriceEUR, &n.PropertyID, &n.ComparisonID, &listingJSON, &alternativesJSON, &n.TelegramUserID, &n.UserName, &n.ChatID, &n.LanguageTag, &n.ListingID, &n.Listing.Source, &n.Listing.ExternalID, &n.Listing.URL, &property, &deal, &n.Listing.Title, &n.Listing.PriceEUR, &n.Listing.Rooms, &n.Listing.AreaM2, &n.Listing.City, &n.Listing.District, &n.Listing.Address, &n.Listing.Floor, &n.Listing.TotalFloors, &n.Listing.BuildingSeries, &n.Listing.BuildingType, &n.Listing.LandAreaM2, &n.Listing.DetailsEnriched, &n.Listing.PublishedAt, &n.Listing.ImageURL, &photoJSON, &n.Listing.AreaKey, &n.Listing.AreaName, &n.Listing.AreaType, &n.Listing.AreaParentKey, &n.Listing.AreaParentName, &n.Listing.SourceAreaKey, &n.Listing.SourceAreaName); err != nil {
-			return nil, err
-		}
-		n.Type = domain.NotificationType(notificationType)
-		n.Listing.ID = n.ListingID
-		n.Listing.PropertyType = domain.PropertyType(property)
-		n.Listing.DealType = domain.DealType(deal)
+	result := make([]domain.PendingNotification, 0, len(rows))
+	for _, row := range rows {
+		n := pendingNotificationFromRow(row)
 		if n.Type == domain.NotificationPriceChanged {
 			n.Listing.PriceEUR = n.CurrentPriceEUR
 		}
-		_ = json.Unmarshal(photoJSON, &n.Listing.PhotoURLs)
+		_ = json.Unmarshal(row.PhotoURLs, &n.Listing.PhotoURLs)
 		var snapshot domain.Listing
-		if err := json.Unmarshal(listingJSON, &snapshot); err != nil {
+		if err := json.Unmarshal(row.ListingSnapshot, &snapshot); err != nil {
 			return nil, err
 		}
 		if snapshot.ID > 0 {
 			n.Listing = snapshot
 			n.ListingID = snapshot.ID
 		}
-		if err := json.Unmarshal(alternativesJSON, &n.Alternatives); err != nil {
+		if err := json.Unmarshal(row.ActiveAlternatives, &n.Alternatives); err != nil {
 			return nil, err
 		}
 		result = append(result, n)
 	}
-	return result, rows.Err()
+	return result, nil
+}
+
+func pendingNotificationFromRow(row sqlcgen.ListPendingNotificationsRow) domain.PendingNotification {
+	return domain.PendingNotification{
+		ID:               row.NotificationID,
+		FilterID:         row.FilterID,
+		Attempts:         row.Attempts,
+		Type:             domain.NotificationType(row.NotificationType),
+		PreviousPriceEUR: row.PreviousPriceEUR,
+		CurrentPriceEUR:  row.CurrentPriceEUR,
+		PropertyID:       row.PropertyID,
+		ComparisonID:     row.ComparisonListingID,
+		TelegramUserID:   row.TelegramUserID,
+		UserName:         row.UserName,
+		ChatID:           row.ChatID,
+		LanguageTag:      row.LanguageTag,
+		ListingID:        row.ListingID,
+		Listing: domain.Listing{
+			ID:              row.ListingID,
+			Source:          row.Source,
+			ExternalID:      row.ExternalID,
+			URL:             row.URL,
+			PropertyType:    domain.PropertyType(row.PropertyType),
+			DealType:        domain.DealType(row.DealType),
+			Title:           row.Title,
+			PriceEUR:        row.PriceEUR,
+			Rooms:           row.Rooms,
+			AreaM2:          row.AreaM2,
+			City:            row.City,
+			District:        row.District,
+			Address:         row.Address,
+			Floor:           row.Floor,
+			TotalFloors:     row.TotalFloors,
+			BuildingSeries:  row.BuildingSeries,
+			BuildingType:    row.BuildingType,
+			LandAreaM2:      row.LandAreaM2,
+			DetailsEnriched: row.DetailsEnriched,
+			PublishedAt:     optionalTime(row.PublishedAt),
+			ImageURL:        row.ImageURL,
+			AreaKey:         row.AreaKey,
+			AreaName:        row.AreaName,
+			AreaType:        row.AreaType,
+			AreaParentKey:   row.AreaParentKey,
+			AreaParentName:  row.AreaParentName,
+			SourceAreaKey:   row.SourceAreaKey,
+			SourceAreaName:  row.SourceAreaName,
+		},
+	}
 }
 
 func (s *Store) MarkSent(ctx context.Context, id int64) error {

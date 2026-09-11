@@ -68,6 +68,16 @@ Run unit tests:
 go test ./...
 ```
 
+Complex PostgreSQL queries are kept in `internal/store/postgres/queries` and
+compiled into type-safe `pgx` methods with a pinned `sqlc` version. Generated
+files are committed so application builds do not require `sqlc`; regenerate
+them after changing a query or migration:
+
+```bash
+go generate ./internal/store/postgres
+git diff --exit-code -- internal/store/postgres/sqlcgen
+```
+
 Run the complete stack:
 
 ```bash

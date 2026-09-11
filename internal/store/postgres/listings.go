@@ -8,6 +8,7 @@ import (
 
 	"github.com/clive00lewis/latvia-home-radar/internal/domain"
 	"github.com/clive00lewis/latvia-home-radar/internal/events"
+	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres/sqlcgen"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -31,19 +32,31 @@ func (s *Store) EnrichmentKeys(ctx context.Context, listings []domain.Listing) (
 		return result, nil
 	}
 	for source, ids := range groupIDs(listings) {
-		rows, err := s.pool.Query(ctx, `SELECT l.external_id,l.price_eur,COALESCE(l.description,''),COALESCE(l.address,''),l.rooms,l.area_m2,l.floor,l.total_floors,COALESCE(l.building_series,''),COALESCE(l.building_type,''),l.land_area_m2,COALESCE(l.image_url,''),l.photo_urls,COALESCE(a.key,''),l.details_enriched FROM listings l LEFT JOIN areas a ON a.id=l.area_id WHERE l.source=$1 AND l.external_id=ANY($2)`, source, ids)
+		rows, err := s.queries.ListStoredListingsForEnrichment(ctx, sqlcgen.ListStoredListingsForEnrichmentParams{
+			Source:      source,
+			ExternalIds: ids,
+		})
 		if err != nil {
 			return nil, err
 		}
-		for rows.Next() {
-			var stored domain.Listing
-			var photoJSON []byte
-			if err := rows.Scan(&stored.ExternalID, &stored.PriceEUR, &stored.Description, &stored.Address, &stored.Rooms, &stored.AreaM2, &stored.Floor, &stored.TotalFloors, &stored.BuildingSeries, &stored.BuildingType, &stored.LandAreaM2, &stored.ImageURL, &photoJSON, &stored.AreaKey, &stored.DetailsEnriched); err != nil {
-				rows.Close()
-				return nil, err
+		for _, row := range rows {
+			stored := domain.Listing{
+				ExternalID:      row.ExternalID,
+				PriceEUR:        row.PriceEUR,
+				Description:     row.Description,
+				Address:         row.Address,
+				Rooms:           row.Rooms,
+				AreaM2:          row.AreaM2,
+				Floor:           row.Floor,
+				TotalFloors:     row.TotalFloors,
+				BuildingSeries:  row.BuildingSeries,
+				BuildingType:    row.BuildingType,
+				LandAreaM2:      row.LandAreaM2,
+				ImageURL:        row.ImageURL,
+				AreaKey:         row.AreaKey,
+				DetailsEnriched: row.DetailsEnriched,
 			}
-			if err := json.Unmarshal(photoJSON, &stored.PhotoURLs); err != nil {
-				rows.Close()
+			if err := json.Unmarshal(row.PhotoURLs, &stored.PhotoURLs); err != nil {
 				return nil, err
 			}
 			key := domain.ListingKey{Source: source, ExternalID: stored.ExternalID}
@@ -51,7 +64,6 @@ func (s *Store) EnrichmentKeys(ctx context.Context, listings []domain.Listing) (
 				delete(result, key)
 			}
 		}
-		rows.Close()
 	}
 	return result, nil
 }
@@ -95,6 +107,8 @@ func (s *Store) ProcessDiscovered(ctx context.Context, sourceKey string, listing
 		return domain.DiscoveryResult{}, err
 	}
 	defer tx.Rollback(ctx)
+	queries := s.queries.WithTx(tx)
+
 	result := domain.DiscoveryResult{}
 	for _, listing := range listings {
 		areaID, sourceAreaID, err := upsertListingArea(ctx, tx, listing)
@@ -103,8 +117,34 @@ func (s *Store) ProcessDiscovered(ctx context.Context, sourceKey string, listing
 		}
 		photos, _ := json.Marshal(listing.PhotoURLs)
 		raw, _ := json.Marshal(map[string]string{"url": listing.URL, "title": listing.Title})
-		var listingID int64
-		err = tx.QueryRow(ctx, `INSERT INTO listings(source,external_id,url,property_type,deal_type,price_eur,rooms,area_m2,city,district,address,floor,total_floors,building_series,building_type,land_area_m2,details_enriched,title,description,published_at,image_url,photo_urls,area_id,source_area_id,first_seen_at,availability_status,last_seen_at,availability_changed_at,raw_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),NULLIF($10,''),NULLIF($11,''),$12,$13,NULLIF($14,''),NULLIF($15,''),$16,$17,$18,$19,$20,NULLIF($21,''),$22,$23,$24,$25,'active',$25,$25,$26) ON CONFLICT(source,external_id) DO NOTHING RETURNING id`, listing.Source, listing.ExternalID, listing.URL, listing.PropertyType, listing.DealType, listing.PriceEUR, listing.Rooms, listing.AreaM2, listing.City, listing.District, listing.Address, listing.Floor, listing.TotalFloors, listing.BuildingSeries, listing.BuildingType, listing.LandAreaM2, listing.DetailsEnriched, listing.Title, listing.Description, listing.PublishedAt, listing.ImageURL, photos, areaID, sourceAreaID, now, raw).Scan(&listingID)
+		listingID, err := queries.InsertListing(ctx, sqlcgen.InsertListingParams{
+			Source:          listing.Source,
+			ExternalID:      listing.ExternalID,
+			URL:             listing.URL,
+			PropertyType:    string(listing.PropertyType),
+			DealType:        string(listing.DealType),
+			PriceEUR:        listing.PriceEUR,
+			Rooms:           listing.Rooms,
+			AreaM2:          listing.AreaM2,
+			City:            listing.City,
+			District:        listing.District,
+			Address:         listing.Address,
+			Floor:           listing.Floor,
+			TotalFloors:     listing.TotalFloors,
+			BuildingSeries:  listing.BuildingSeries,
+			BuildingType:    listing.BuildingType,
+			LandAreaM2:      listing.LandAreaM2,
+			DetailsEnriched: listing.DetailsEnriched,
+			Title:           listing.Title,
+			Description:     listing.Description,
+			PublishedAt:     optionalTimestamptz(listing.PublishedAt),
+			ImageURL:        listing.ImageURL,
+			PhotoURLs:       photos,
+			AreaID:          areaID,
+			SourceAreaID:    sourceAreaID,
+			FirstSeenAt:     requiredTimestamptz(now),
+			RawJSON:         raw,
+		})
 		if err == pgx.ErrNoRows {
 			var previousPrice *int
 			var previousAvailability string
@@ -117,7 +157,31 @@ func (s *Store) ProcessDiscovered(ctx context.Context, sourceKey string, listing
 				return result, err
 			}
 			signalsChanged := matchingSignalsChanged(storedListing, listing)
-			_, err = tx.Exec(ctx, `UPDATE listings SET url=$1,title=COALESCE(NULLIF($2,''),title),description=COALESCE(NULLIF($3,''),description),published_at=COALESCE($4,published_at),image_url=COALESCE(NULLIF($5,''),image_url),area_id=COALESCE($6,area_id),source_area_id=COALESCE($7,source_area_id),price_eur=$8,rooms=COALESCE($9,rooms),area_m2=COALESCE($10,area_m2),city=COALESCE(NULLIF($11,''),city),district=COALESCE(NULLIF($12,''),district),address=COALESCE(NULLIF($13,''),address),floor=COALESCE($14,floor),total_floors=COALESCE($15,total_floors),building_series=COALESCE(NULLIF($16,''),building_series),building_type=COALESCE(NULLIF($17,''),building_type),land_area_m2=COALESCE($18,land_area_m2),photo_urls=CASE WHEN jsonb_array_length($19::jsonb)>0 THEN $19::jsonb ELSE photo_urls END,details_enriched=details_enriched OR $20,raw_json=$21,availability_status='active',last_seen_at=$22,availability_changed_at=CASE WHEN availability_status<>'active' THEN $22 ELSE availability_changed_at END WHERE id=$23`, listing.URL, listing.Title, listing.Description, listing.PublishedAt, listing.ImageURL, areaID, sourceAreaID, listing.PriceEUR, listing.Rooms, listing.AreaM2, listing.City, listing.District, listing.Address, listing.Floor, listing.TotalFloors, listing.BuildingSeries, listing.BuildingType, listing.LandAreaM2, photos, listing.DetailsEnriched, raw, now, listingID)
+			err = queries.UpdateExistingListing(ctx, sqlcgen.UpdateExistingListingParams{
+				URL:             listing.URL,
+				Title:           listing.Title,
+				Description:     listing.Description,
+				PublishedAt:     optionalTimestamptz(listing.PublishedAt),
+				ImageURL:        listing.ImageURL,
+				AreaID:          areaID,
+				SourceAreaID:    sourceAreaID,
+				PriceEUR:        listing.PriceEUR,
+				Rooms:           listing.Rooms,
+				AreaM2:          listing.AreaM2,
+				City:            listing.City,
+				District:        listing.District,
+				Address:         listing.Address,
+				Floor:           listing.Floor,
+				TotalFloors:     listing.TotalFloors,
+				BuildingSeries:  listing.BuildingSeries,
+				BuildingType:    listing.BuildingType,
+				LandAreaM2:      listing.LandAreaM2,
+				PhotoURLs:       photos,
+				DetailsEnriched: listing.DetailsEnriched,
+				RawJSON:         raw,
+				ObservedAt:      requiredTimestamptz(now),
+				ListingID:       listingID,
+			})
 			if err != nil {
 				return result, err
 			}
@@ -222,11 +286,26 @@ func (s *Store) RecordFeedSightings(ctx context.Context, listings []domain.Listi
 		}
 		rows.Close()
 
-		if _, err := tx.Exec(ctx, `UPDATE listings SET availability_status='active',last_seen_at=$1,availability_changed_at=CASE WHEN availability_status<>'active' THEN $1 ELSE availability_changed_at END WHERE source=$2 AND external_id=ANY($3)`, now, source, ids); err != nil {
+		if _, err := tx.Exec(ctx, `
+			UPDATE listings
+			SET availability_status = 'active',
+			    last_seen_at = $1,
+			    availability_changed_at = CASE
+			        WHEN availability_status <> 'active' THEN $1
+			        ELSE availability_changed_at
+			    END
+			WHERE source = $2 AND external_id = ANY($3)
+		`, now, source, ids); err != nil {
 			return err
 		}
 		for _, listingID := range transitioned {
-			if _, err := tx.Exec(ctx, `INSERT INTO listing_availability_observations(listing_id,status,previous_status,observed_at,observation_kind,evidence,is_transition) VALUES($1,'active',$2,$3,'feed','advert observed in provider results',TRUE)`, listingID, previous[listingID], now); err != nil {
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO listing_availability_observations (
+					listing_id, status, previous_status, observed_at,
+					observation_kind, evidence, is_transition
+				)
+				VALUES ($1, 'active', $2, $3, 'feed', 'advert observed in provider results', TRUE)
+			`, listingID, previous[listingID], now); err != nil {
 				return err
 			}
 		}
@@ -305,12 +384,29 @@ func recordFeedAvailability(ctx context.Context, tx pgx.Tx, listingID int64, pre
 		prior = previous
 		transition = previous != domain.AvailabilityActive
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO listing_availability_observations(listing_id,status,previous_status,observed_at,observation_kind,evidence,is_transition) VALUES($1,'active',$2,$3,'feed','advert observed in provider results',$4)`, listingID, prior, observedAt, transition)
+	_, err := tx.Exec(ctx, `
+		INSERT INTO listing_availability_observations (
+			listing_id, status, previous_status, observed_at,
+			observation_kind, evidence, is_transition
+		)
+		VALUES ($1, 'active', $2, $3, 'feed', 'advert observed in provider results', $4)
+	`, listingID, prior, observedAt, transition)
 	return err
 }
 
 func queueListingSignalJob(ctx context.Context, tx pgx.Tx, listingID int64, now time.Time) error {
-	_, err := tx.Exec(ctx, `INSERT INTO listing_signal_jobs(listing_id,next_attempt_at,created_at,updated_at) VALUES($1,now(),$2,$2) ON CONFLICT(listing_id) DO UPDATE SET generation=listing_signal_jobs.generation+1,status='pending',attempts=0,next_attempt_at=now(),claimed_at=NULL,last_error=NULL,updated_at=excluded.updated_at`, listingID, now)
+	_, err := tx.Exec(ctx, `
+		INSERT INTO listing_signal_jobs (listing_id, next_attempt_at, created_at, updated_at)
+		VALUES ($1, now(), $2, $2)
+		ON CONFLICT (listing_id) DO UPDATE
+		SET generation = listing_signal_jobs.generation + 1,
+		    status = 'pending',
+		    attempts = 0,
+		    next_attempt_at = now(),
+		    claimed_at = NULL,
+		    last_error = NULL,
+		    updated_at = excluded.updated_at
+	`, listingID, now)
 	return err
 }
 
@@ -365,7 +461,14 @@ func upsertListingArea(ctx context.Context, tx pgx.Tx, l domain.Listing) (*int64
 	var sourceID *int64
 	if l.SourceAreaKey != "" {
 		var id int64
-		err = tx.QueryRow(ctx, `INSERT INTO source_areas(source,external_key,raw_name,area_id) VALUES($1,$2,NULLIF($3,''),$4) ON CONFLICT(source,external_key) DO UPDATE SET raw_name=COALESCE(excluded.raw_name,source_areas.raw_name),area_id=COALESCE(excluded.area_id,source_areas.area_id) RETURNING id`, l.Source, l.SourceAreaKey, l.SourceAreaName, areaID).Scan(&id)
+		err = tx.QueryRow(ctx, `
+			INSERT INTO source_areas (source, external_key, raw_name, area_id)
+			VALUES ($1, $2, nullif($3, ''), $4)
+			ON CONFLICT (source, external_key) DO UPDATE
+			SET raw_name = coalesce(excluded.raw_name, source_areas.raw_name),
+			    area_id = coalesce(excluded.area_id, source_areas.area_id)
+			RETURNING id
+		`, l.Source, l.SourceAreaKey, l.SourceAreaName, areaID).Scan(&id)
 		if err != nil {
 			return nil, nil, err
 		}
