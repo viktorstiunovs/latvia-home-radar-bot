@@ -18,6 +18,7 @@ import (
 	"github.com/clive00lewis/latvia-home-radar/internal/localization"
 	"github.com/clive00lewis/latvia-home-radar/internal/provider"
 	"github.com/clive00lewis/latvia-home-radar/internal/provider/city24"
+	"github.com/clive00lewis/latvia-home-radar/internal/provider/domimaps"
 	"github.com/clive00lewis/latvia-home-radar/internal/provider/sslv"
 	"github.com/clive00lewis/latvia-home-radar/internal/store/postgres"
 	"github.com/clive00lewis/latvia-home-radar/internal/telegram"
@@ -81,7 +82,10 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 		return err
 	}
 
-	sources := buildSources(httpClient)
+	sources, err := buildSources(httpClient, cfg.DomimapsDetailURL)
+	if err != nil {
+		return err
+	}
 	monitor := app.NewMonitor(store, sources, cfg.PollInterval, logger)
 	outbox := app.NewOutboxRelay(store, broker, logger)
 	matcher := app.NewListingMatcher(store, broker, logger, cfg.DeduplicationEnabled)
@@ -110,14 +114,23 @@ func run(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
 	return err
 }
 
-func buildSources(client *http.Client) []provider.Source {
-	result := make([]provider.Source, 0, 8)
+func buildSources(client *http.Client, domimapsDetailURL string) ([]provider.Source, error) {
+	domimapsClient, err := domimaps.NewClientWithDetails(client, domimapsDetailURL)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]provider.Source, 0, 12)
 	for _, property := range []domain.PropertyType{domain.PropertyApartment, domain.PropertyHouse} {
 		for _, deal := range []domain.DealType{domain.DealRent, domain.DealSale} {
-			result = append(result, sslv.New(property, deal, client), city24.New(property, deal, client))
+			result = append(result,
+				sslv.New(property, deal, client),
+				city24.New(property, deal, client),
+				domimaps.New(property, deal, domimapsClient),
+			)
 		}
 	}
-	return result
+
+	return result, nil
 }
 
 type contactTransport struct {

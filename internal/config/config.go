@@ -12,6 +12,7 @@ type Config struct {
 	TelegramBotToken        string
 	TelegramAdminUserID     int64
 	ScraperContact          string
+	DomimapsDetailURL       string
 	DatabaseURL             string
 	RabbitMQURL             string
 	PollInterval            time.Duration
@@ -29,6 +30,7 @@ func FromEnv() (Config, error) {
 	c := Config{
 		TelegramBotToken:        strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN")),
 		ScraperContact:          strings.TrimSpace(os.Getenv("SCRAPER_CONTACT")),
+		DomimapsDetailURL:       strings.TrimSpace(os.Getenv("DOMIMAPS_DETAIL_URL")),
 		DatabaseURL:             strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		RabbitMQURL:             strings.TrimSpace(os.Getenv("RABBITMQ_URL")),
 		LogLevel:                strings.ToUpper(strings.TrimSpace(os.Getenv("LOG_LEVEL"))),

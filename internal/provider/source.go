@@ -23,3 +23,18 @@ type ListingUnavailableError struct {
 func (e *ListingUnavailableError) Error() string {
 	return e.Evidence
 }
+
+// PartialEnrichmentError reports that a provider returned a safe listing
+// snapshot but could not complete every optional detail lookup. Callers may
+// persist the returned listing while leaving its detail enrichment retryable.
+type PartialEnrichmentError struct {
+	Err error
+}
+
+func (e *PartialEnrichmentError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *PartialEnrichmentError) Unwrap() error {
+	return e.Err
+}

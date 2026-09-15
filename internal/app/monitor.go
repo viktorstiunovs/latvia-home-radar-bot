@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math/rand/v2"
 	"time"
@@ -80,10 +81,18 @@ func (m *Monitor) enrich(ctx context.Context, source provider.Source, listings [
 		}
 	}
 	result := make([]domain.Listing, 0, len(targets))
+	partial := 0
 	for index, listing := range targets {
 		enriched, err := source.Enrich(ctx, listing)
 		if err != nil {
-			m.logger.Warn("could not enrich listing", "source", source.Key(), "listing", listing.ExternalID, "error", err)
+			var partialError *provider.PartialEnrichmentError
+			if errors.As(err, &partialError) && enriched.Key() == listing.Key() {
+				result = append(result, enriched)
+				partial++
+				m.logger.Warn("listing enrichment incomplete", "source", source.Key(), "listing", listing.ExternalID, "error", err)
+			} else {
+				m.logger.Warn("could not enrich listing", "source", source.Key(), "listing", listing.ExternalID, "error", err)
+			}
 		} else if enriched.DetailsEnriched {
 			result = append(result, enriched)
 		}
@@ -95,6 +104,6 @@ func (m *Monitor) enrich(ctx context.Context, source provider.Source, listings [
 			}
 		}
 	}
-	m.logger.Info("listing enrichment complete", "source", source.Key(), "requested", len(targets), "enriched", len(result))
+	m.logger.Info("listing enrichment complete", "source", source.Key(), "requested", len(targets), "persisted", len(result), "partial", partial)
 	return result
 }

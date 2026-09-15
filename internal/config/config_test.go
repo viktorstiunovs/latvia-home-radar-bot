@@ -32,6 +32,19 @@ func TestFromEnvReadsDeduplicationToggle(t *testing.T) {
 	}
 }
 
+func TestFromEnvReadsOptionalDomimapsDetailURL(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DOMIMAPS_DETAIL_URL", "  http://domimaps-detail:8080  ")
+
+	cfg, err := FromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DomimapsDetailURL != "http://domimaps-detail:8080" {
+		t.Fatalf("DomimapsDetailURL = %q", cfg.DomimapsDetailURL)
+	}
+}
+
 func TestFromEnvEnablesDeduplicationByDefault(t *testing.T) {
 	setRequiredEnvironment(t)
 
@@ -134,6 +147,7 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("TELEGRAM_BOT_TOKEN", "test-token")
 	t.Setenv("SCRAPER_CONTACT", "test@example.com")
 	t.Setenv("POLL_INTERVAL_SECONDS", "")
+	t.Setenv("DOMIMAPS_DETAIL_URL", "")
 	t.Setenv("DEDUPLICATION_ENABLED", "")
 	t.Setenv("SIGNAL_WORKERS", "")
 	t.Setenv("SIGNAL_PHOTO_LIMIT", "")

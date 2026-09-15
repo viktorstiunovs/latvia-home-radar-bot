@@ -7,8 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Added DOMImaps apartment and house sale/rental discovery through its public
+  listing summaries, with canonical advert links, bounded pagination, photos,
+  enrichment, and conservative availability evidence.
+- Added an isolated, Compose-managed Playwright service that retrieves
+  DOMImaps advert descriptions while preserving and retrying summary listings
+  when browser enrichment is unavailable.
+
 ### Changed
 
+- Included the DOMImaps advert ID, status, duration, and outcome in Playwright
+  enrichment logs while demoting duplicate generic HTTP access lines.
 - Coalesced overlapping saved-filter matches so each user receives at most one
   alert per listing event while separate users remain independently notified.
 - Completed signal jobs for City24 adverts removed during enrichment, retaining

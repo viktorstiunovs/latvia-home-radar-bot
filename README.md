@@ -1,11 +1,12 @@
 # Latvia Home Radar
 
-A self-hosted Go Telegram bot that watches SS.lv and City24.lv for new Latvian apartment and house listings and sends matches for user-defined filters.
+A self-hosted Go Telegram bot that watches SS.lv, City24.lv, and DOMImaps.lv for new Latvian apartment and house listings and sends matches for user-defined filters.
 
 ## Features
 
 - Apartments and houses for rent or sale across Latvia.
-- SS.lv RSS/detail parsing and City24 JSON API discovery/enrichment.
+- SS.lv RSS/detail parsing, City24 JSON API integration, and DOMImaps public
+  listing-summary discovery with Playwright description enrichment.
 - Price, rooms, size, and hierarchical canonical-area filters.
 - Durable listing price history and rich alerts when a property's changed price
   matches a saved filter.
@@ -22,11 +23,23 @@ A self-hosted Go Telegram bot that watches SS.lv and City24.lv for new Latvian a
 
 ## Local setup
 
-Go 1.26 or newer, PostgreSQL 17, and RabbitMQ 4 are recommended.
+Go 1.26 or newer, PostgreSQL 17, RabbitMQ 4, and Docker Compose are
+recommended. The complete Compose stack builds the DOMImaps browser service;
+Python and Chromium do not need to be installed directly on the host or VPS.
 
 ```bash
 cp .env.example .env
 docker compose up -d db rabbitmq
+go run ./cmd/bot
+```
+
+That lightweight host-run workflow leaves DOMImaps description enrichment
+disabled. To enable it while running Go on the host, also start the sidecar and
+set its loopback URL in `.env` or the IDE environment:
+
+```bash
+docker compose up -d domimaps-detail
+# DOMIMAPS_DETAIL_URL=http://localhost:8080
 go run ./cmd/bot
 ```
 
@@ -85,6 +98,48 @@ docker compose up -d --build
 docker compose logs -f app
 ```
 
+### DOMImaps browser enrichment
+
+DOMImaps listing summaries remain the source of structured facts, photos, and
+availability evidence. Advert descriptions are fetched separately by the
+`domimaps-detail` service. It uses the version-pinned official Playwright
+Python image and matching Python package, keeps one headless Chromium context
+for Cloudflare clearance cookies, and waits up to 20 seconds for the
+`#addition-info` element after the initial challenge response. The API accepts
+only a 1-to-20 digit advert ID and constructs the fixed
+`https://ad.domimaps.lv/{id}` URL itself, so it cannot be used as a general URL
+fetcher.
+
+Compose publishes the service only on host loopback and connects the app over
+the private Compose network. `DOMIMAPS_DETAIL_TIMEOUT_SECONDS` can be set from
+5 to 20 seconds; `DOMIMAPS_DETAIL_HOST_PORT` changes the loopback development
+port. The Go application's `DOMIMAPS_DETAIL_URL` is optional outside Compose.
+If it is empty, DOMImaps continues with summary-only enrichment. If the browser
+is busy, unavailable, or cannot clear a challenge, the summary listing is
+still persisted and treated as active based only on the separate JSONP
+evidence. Its detail lookup and signal job remain retryable; a browser failure
+never marks an advert inactive.
+
+Each sidecar request writes one correlation-friendly outcome log containing
+`external_id`, HTTP `status`, and `duration_ms`. Successful requests also show
+`description_bytes`; retryable failures include their safe error reason.
+
+Compose is the recommended VPS installation because it pins Chromium and its
+system libraries. For a host-managed process instead, install the same pinned
+Python dependency and its browser, then point the Go process at it:
+
+```bash
+cd services/domimaps-detail
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/playwright install --with-deps chromium
+DOMIMAPS_DETAIL_BIND=127.0.0.1 .venv/bin/python service.py
+```
+
+This stage stores the description as plain provider data only. LLM-based field
+extraction is intentionally a separate follow-up and is not part of the
+browser service.
+
 ## Bot commands
 
 ```text
@@ -137,8 +192,8 @@ statistics; normalized text is matching evidence rather than a replacement.
 
 A dedicated signal collector processes new listings and incrementally
 backfills existing baseline listings outside the source-polling loop. It
-downloads at most eight unique photos per evidence snapshot, accepts only the
-documented SS.lv or City24 image hosts (including redirects), enforces a
+  downloads at most eight unique photos per evidence snapshot, accepts only the
+  documented SS.lv, City24, or DOMImaps image hosts (including redirects), enforces a
 15-second request timeout and 10 MiB response limit, and records both a SHA-256
 content fingerprint and a versioned 64-bit difference hash. Resized or
 recompressed copies can therefore be compared without retaining downloaded

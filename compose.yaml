@@ -33,6 +33,23 @@ services:
       timeout: 5s
       retries: 20
 
+  domimaps-detail:
+    build: ./services/domimaps-detail
+    restart: unless-stopped
+    init: true
+    shm_size: 256mb
+    environment:
+      DOMIMAPS_DETAIL_TIMEOUT_SECONDS: ${DOMIMAPS_DETAIL_TIMEOUT_SECONDS:-20}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:${DOMIMAPS_DETAIL_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+
   app:
     build: .
     restart: unless-stopped
@@ -40,11 +57,14 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      DOMIMAPS_DETAIL_URL: http://domimaps-detail:8080
     depends_on:
       db:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      domimaps-detail:
+        condition: service_started
 
 volumes:
   postgres_data:

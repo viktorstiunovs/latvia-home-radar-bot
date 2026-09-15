@@ -69,6 +69,9 @@ func (s *Store) EnrichmentKeys(ctx context.Context, listings []domain.Listing) (
 }
 
 func enrichmentRequired(stored, incoming domain.Listing) bool {
+	if !stored.DetailsEnriched {
+		return true
+	}
 	if !pricesEqual(stored.PriceEUR, incoming.PriceEUR) {
 		return true
 	}

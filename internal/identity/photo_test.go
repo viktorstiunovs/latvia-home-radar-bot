@@ -160,6 +160,20 @@ func TestFingerprintPhotosReusesUnchangedURLsAndDownloadsChangedURLs(t *testing.
 	}
 }
 
+func TestFingerprintPhotosAllowsDOMImapsMediaHost(t *testing.T) {
+	content := encodePNG(t, patternedImage(72, 64, false))
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return imageResponse(request, content), nil
+	})}
+	photos, err := FingerprintPhotos(context.Background(), client, "domimaps.lv", []string{"https://adr.domimaps.lv/get_image/m-umap/42_0.jpg"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(photos) != 1 || photos[0].SourceURL != "https://adr.domimaps.lv/get_image/m-umap/42_0.jpg" {
+		t.Fatalf("photos = %+v", photos)
+	}
+}
+
 func TestPhotoDownloadPropagatesCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

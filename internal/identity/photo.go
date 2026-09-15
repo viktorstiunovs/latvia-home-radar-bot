@@ -39,6 +39,9 @@ var photoHosts = map[string]map[string]bool{
 	"city24.lv": {
 		"static.img-city24.lv": true,
 	},
+	"domimaps.lv": {
+		"adr.domimaps.lv": true,
+	},
 }
 
 func FingerprintPhotos(ctx context.Context, client *http.Client, source string, rawURLs []string, limit int) ([]domain.PhotoFingerprint, error) {

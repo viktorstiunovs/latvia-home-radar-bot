@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -43,6 +44,7 @@ func (f *fakeStore) ProcessDiscovered(_ context.Context, _ string, l []domain.Li
 type fakeSource struct {
 	listing domain.Listing
 	failed  bool
+	partial bool
 	calls   int
 }
 
@@ -56,10 +58,15 @@ func (f *fakeSource) FetchRecent(context.Context) ([]domain.Listing, error) {
 
 func (f *fakeSource) Enrich(_ context.Context, l domain.Listing) (domain.Listing, error) {
 	f.calls++
-	if !f.failed {
-		l.DetailsEnriched = true
-		l.Floor = ptrInt(2)
+	if f.failed {
+		return l, nil
 	}
+	l.Floor = ptrInt(2)
+	if f.partial {
+		return l, &provider.PartialEnrichmentError{Err: errors.New("detail service unavailable")}
+	}
+	l.DetailsEnriched = true
+
 	return l, nil
 }
 
@@ -92,5 +99,14 @@ func TestMonitorBaselineAndEnrichment(t *testing.T) {
 	}
 	if len(store.processed) != 0 {
 		t.Fatal("failed enrichment should not be persisted")
+	}
+
+	source.failed = false
+	source.partial = true
+	if err := m.Poll(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.processed) != 1 || store.processed[0].DetailsEnriched || store.processed[0].Floor == nil {
+		t.Fatal("safe partial enrichment was not persisted as incomplete")
 	}
 }
