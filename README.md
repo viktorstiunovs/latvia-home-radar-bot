@@ -159,12 +159,14 @@ immutable snapshot for longitudinal analysis.
 
 After each evidence snapshot, a separate resolver evaluates a bounded set of
 compatible candidates in shadow mode. Candidate generation first requires the
-same property/deal type and a shared canonical area or exact normalized
-address, then excludes known-incompatible rooms, size, floor, and land area.
-The versioned `property-v1` rule combines exact or perceptual photo evidence,
+same property/deal type and exact non-empty normalized address, rejects
+conflicting canonical areas when both are known, then excludes
+known-incompatible rooms, size, floor, and land area.
+The versioned `property-v2` rule combines exact or perceptual photo evidence,
 address, area, structured facts, and description-token similarity. Automatic
-merges require photo evidence, compatible location or structural context, no
-conflicting fact, and a score of at least `0.72`; scores from `0.35` are retained
+merges require photo evidence, the same non-empty normalized address, no
+conflicting fact, and a score of at least `0.72`. Floor areas use a conservative
+2 m² or 3% measurement tolerance; scores from `0.35` are retained
 as ambiguous for review. Address or prose alone can never cause an automatic
 merge.
 

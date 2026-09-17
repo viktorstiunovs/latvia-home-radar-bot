@@ -9,6 +9,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
+- Tightened duplicate resolution by requiring the same non-empty normalized
+  address for automatic matches and reducing the accepted floor-area measurement
+  tolerance to 2 m² or 3% for all property types.
 - Coalesced overlapping saved-filter matches so each user receives at most one
   alert per listing event while separate users remain independently notified.
 - Completed signal jobs for City24 adverts removed during enrichment, retaining

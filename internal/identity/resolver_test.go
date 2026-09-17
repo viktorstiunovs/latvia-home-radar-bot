@@ -36,6 +36,79 @@ func TestEvaluateDuplicateAcceptsCrossProviderPerceptualPhoto(t *testing.T) {
 	}
 }
 
+func TestEvaluateDuplicateRejectsMaterialApartmentAreaDifferenceDespiteExactPhoto(t *testing.T) {
+	current := duplicateEvidence(1, "city24.lv", "2756175", "0123456789abcdef")
+	candidate := duplicateEvidence(2, "city24.lv", "6685119", "0123456789abcdef")
+	current.Listing.AreaM2 = floatTestPointer(94)
+	candidate.Listing.AreaM2 = floatTestPointer(85.8)
+
+	decision := EvaluateDuplicate(current, candidate)
+
+	if decision.Status == domain.DuplicateAccepted {
+		t.Fatalf("materially different apartment sizes were accepted: %+v", decision)
+	}
+	if len(decision.Evidence.ConflictingFacts) != 1 || decision.Evidence.ConflictingFacts[0] != "area_m2" {
+		t.Fatalf("conflicts = %v", decision.Evidence.ConflictingFacts)
+	}
+}
+
+func TestEvaluateDuplicateRequiresSameNonemptyAddress(t *testing.T) {
+	tests := []struct {
+		name             string
+		candidateAddress string
+	}{
+		{name: "different", candidateAddress: "brivibas iela 50"},
+		{name: "missing"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			current := duplicateEvidence(1, "ss.lv", "a", "0123456789abcdef")
+			candidate := duplicateEvidence(2, "city24.lv", "b", "0123456789abcdef")
+			candidate.Listing.NormalizedAddress = test.candidateAddress
+
+			decision := EvaluateDuplicate(current, candidate)
+
+			if decision.Status == domain.DuplicateAccepted {
+				t.Fatalf("address mismatch was accepted: %+v", decision)
+			}
+		})
+	}
+}
+
+func TestEvaluateDuplicateAcceptsSmallCrossProviderAreaDifference(t *testing.T) {
+	current := duplicateEvidence(1, "ss.lv", "a", "0123456789abcdef")
+	candidate := duplicateEvidence(2, "city24.lv", "b", "0123456789abcdef")
+	current.Listing.AreaM2 = floatTestPointer(54.2)
+	candidate.Listing.AreaM2 = floatTestPointer(55.7)
+	if current.Listing.NormalizedAddress != candidate.Listing.NormalizedAddress {
+		t.Fatal("test setup requires the same normalized address")
+	}
+
+	decision := EvaluateDuplicate(current, candidate)
+
+	if decision.Status != domain.DuplicateAccepted {
+		t.Fatalf("small measurement difference was not accepted: %+v", decision)
+	}
+}
+
+func TestEvaluateDuplicateUsesSameAreaToleranceForHouses(t *testing.T) {
+	current := duplicateEvidence(1, "ss.lv", "a", "0123456789abcdef")
+	candidate := duplicateEvidence(2, "city24.lv", "b", "0123456789abcdef")
+	current.Listing.PropertyType = domain.PropertyHouse
+	candidate.Listing.PropertyType = domain.PropertyHouse
+	current.Listing.AreaM2 = floatTestPointer(100)
+	candidate.Listing.AreaM2 = floatTestPointer(105)
+
+	decision := EvaluateDuplicate(current, candidate)
+
+	if decision.Status == domain.DuplicateAccepted {
+		t.Fatalf("materially different house sizes were accepted: %+v", decision)
+	}
+	if len(decision.Evidence.ConflictingFacts) != 1 || decision.Evidence.ConflictingFacts[0] != "area_m2" {
+		t.Fatalf("conflicts = %v", decision.Evidence.ConflictingFacts)
+	}
+}
+
 func TestEvaluateDuplicateDoesNotAcceptAddressOnly(t *testing.T) {
 	current := duplicateEvidence(1, "ss.lv", "a", "0000000000000000")
 	candidate := duplicateEvidence(2, "city24.lv", "b", "ffffffffffffffff")

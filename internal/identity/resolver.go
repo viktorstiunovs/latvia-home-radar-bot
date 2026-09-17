@@ -10,10 +10,12 @@ import (
 )
 
 const (
-	DuplicateRuleVersion    = "property-v1"
+	DuplicateRuleVersion    = "property-v2"
 	PerceptualPhotoDistance = 10
 	AutomaticMatchThreshold = 0.72
 	AmbiguousMatchThreshold = 0.35
+	AreaAbsoluteToleranceM2 = 2.0
+	AreaRelativeTolerance   = 0.03
 )
 
 func EvaluateDuplicate(current, candidate domain.ListingEvidence) domain.DuplicateDecision {
@@ -65,9 +67,8 @@ func EvaluateDuplicate(current, candidate domain.ListingEvidence) domain.Duplica
 	score = math.Round(max(0, min(score, 1))*10000) / 10000
 
 	photoEvidence := evidence.PhotoEvidence != "none"
-	compatibleContext := evidence.AddressMatch || evidence.AreaMatch || len(evidence.CompatibleFacts) >= 2
 	status := domain.DuplicateRejected
-	if photoEvidence && compatibleContext && len(evidence.ConflictingFacts) == 0 && score >= AutomaticMatchThreshold {
+	if photoEvidence && evidence.AddressMatch && len(evidence.ConflictingFacts) == 0 && score >= AutomaticMatchThreshold {
 		status = domain.DuplicateAccepted
 	} else if score >= AmbiguousMatchThreshold {
 		status = domain.DuplicateAmbiguous
@@ -113,7 +114,7 @@ func comparePhotos(left, right []domain.PhotoFingerprint) (int, *int) {
 func compareFacts(left, right domain.Listing) ([]string, []string) {
 	var compatible, conflicting []string
 	compareIntFact("rooms", left.Rooms, right.Rooms, 0, &compatible, &conflicting)
-	compareFloatFact("area_m2", left.AreaM2, right.AreaM2, 5, 0.08, &compatible, &conflicting)
+	compareFloatFact("area_m2", left.AreaM2, right.AreaM2, AreaAbsoluteToleranceM2, AreaRelativeTolerance, &compatible, &conflicting)
 	compareIntFact("floor", left.Floor, right.Floor, 0, &compatible, &conflicting)
 	compareIntFact("total_floors", left.TotalFloors, right.TotalFloors, 0, &compatible, &conflicting)
 	compareTextFact("building_series", left.BuildingSeries, right.BuildingSeries, &compatible, &conflicting)

@@ -17,15 +17,13 @@ SELECT id
 FROM latest_snapshots
 WHERE structured_facts->>'property_type' = sqlc.arg(property_type)::text
   AND structured_facts->>'deal_type' = sqlc.arg(deal_type)::text
+  AND sqlc.arg(normalized_address)::text <> ''
+  AND normalized_address = sqlc.arg(normalized_address)
   AND (
-      (
-          sqlc.arg(area_key)::text <> ''
-          AND structured_facts->>'area_key' = sqlc.arg(area_key)
-      )
-      OR (
-          sqlc.arg(normalized_address)::text <> ''
-          AND normalized_address = sqlc.arg(normalized_address)
-      )
+      sqlc.arg(area_key)::text = ''
+      OR structured_facts->>'area_key' IS NULL
+      OR structured_facts->>'area_key' = ''
+      OR structured_facts->>'area_key' = sqlc.arg(area_key)
   )
   AND (
       sqlc.narg(rooms)::integer IS NULL
@@ -38,7 +36,7 @@ WHERE structured_facts->>'property_type' = sqlc.arg(property_type)::text
       OR abs(
           (structured_facts->>'area_m2')::double precision
           - sqlc.narg(area_m2)
-      ) <= greatest(5.0, sqlc.narg(area_m2) * 0.08)
+      ) <= greatest(2.0, sqlc.narg(area_m2) * 0.03)
   )
   AND (
       sqlc.narg(floor)::integer IS NULL

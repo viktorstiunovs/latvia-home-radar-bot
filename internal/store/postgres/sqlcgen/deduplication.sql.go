@@ -30,15 +30,13 @@ SELECT id
 FROM latest_snapshots
 WHERE structured_facts->>'property_type' = $1::text
   AND structured_facts->>'deal_type' = $2::text
+  AND $3::text <> ''
+  AND normalized_address = $3
   AND (
-      (
-          $3::text <> ''
-          AND structured_facts->>'area_key' = $3
-      )
-      OR (
-          $4::text <> ''
-          AND normalized_address = $4
-      )
+      $4::text = ''
+      OR structured_facts->>'area_key' IS NULL
+      OR structured_facts->>'area_key' = ''
+      OR structured_facts->>'area_key' = $4
   )
   AND (
       $5::integer IS NULL
@@ -51,7 +49,7 @@ WHERE structured_facts->>'property_type' = $1::text
       OR abs(
           (structured_facts->>'area_m2')::double precision
           - $6
-      ) <= greatest(5.0, $6 * 0.08)
+      ) <= greatest(2.0, $6 * 0.03)
   )
   AND (
       $7::integer IS NULL
@@ -68,8 +66,8 @@ WHERE structured_facts->>'property_type' = $1::text
   )
 ORDER BY
     (
-        normalized_address = $4
-        AND $4::text <> ''
+        normalized_address = $3
+        AND $3::text <> ''
     ) DESC,
     completed_at DESC,
     id DESC
@@ -79,8 +77,8 @@ LIMIT $9
 type FindDuplicateCandidateSnapshotIDsParams struct {
 	PropertyType      string   `json:"property_type"`
 	DealType          string   `json:"deal_type"`
-	AreaKey           string   `json:"area_key"`
 	NormalizedAddress string   `json:"normalized_address"`
+	AreaKey           string   `json:"area_key"`
 	Rooms             *int     `json:"rooms"`
 	AreaM2            *float64 `json:"area_m2"`
 	Floor             *int     `json:"floor"`
@@ -93,8 +91,8 @@ func (q *Queries) FindDuplicateCandidateSnapshotIDs(ctx context.Context, arg Fin
 	rows, err := q.db.Query(ctx, findDuplicateCandidateSnapshotIDs,
 		arg.PropertyType,
 		arg.DealType,
-		arg.AreaKey,
 		arg.NormalizedAddress,
+		arg.AreaKey,
 		arg.Rooms,
 		arg.AreaM2,
 		arg.Floor,
